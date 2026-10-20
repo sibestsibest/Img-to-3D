@@ -95,6 +95,7 @@ public static class ProblemDetailsSetup
             };
         });
         services.AddExceptionHandler<ApiExceptionHandler>();
-        services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = 60L * 1024 * 1024);
+        // Main photo plus up to 5 extra photos of 20 MB each.
+        services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = 130L * 1024 * 1024);
     }
 }

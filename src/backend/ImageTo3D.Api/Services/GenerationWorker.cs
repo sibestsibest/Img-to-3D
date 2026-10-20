@@ -110,13 +110,27 @@ public sealed class GenerationWorker(
         job.Stage = "Submitting";
         await SaveAsync(db, job, cancellationToken);
 
+        var extras = await LoadExtrasAsync(store, job.Id, cancellationToken);
+        if (extras.Count > 0)
+        {
+            // Only the Stability AI engines use extra photos; TripoSR would just receive a larger upload.
+            var engine = (await inference.GetHealthAsync(cancellationToken))?.Engine;
+            if (string.Equals(engine, "TripoSR", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogInformation("Engine {Engine} does not use extra photos; sending the main photo only", engine);
+                extras = [];
+            }
+        }
+
         try
         {
-            var submitted = await inference.SubmitAsync(png, job.Id.ToString("N"), cancellationToken);
+            var submitted = extras.Count == 0
+                ? await inference.SubmitAsync(png, job.Id.ToString("N"), cancellationToken)
+                : await inference.SubmitAsync(png, extras, job.Id.ToString("N"), cancellationToken);
             job.InferenceJobId = submitted.Id;
             job.Stage = submitted.Stage;
             await SaveAsync(db, job, cancellationToken);
-            logger.LogInformation("Submitted to inference as {InferenceJobId}", submitted.Id);
+            logger.LogInformation("Submitted to inference as {InferenceJobId} with {ExtraCount} extra photos", submitted.Id, extras.Count);
             return true;
         }
         catch (InferenceUnavailableException ex)
@@ -130,6 +144,22 @@ public sealed class GenerationWorker(
 
         await SaveAsync(db, job, cancellationToken);
         return false;
+    }
+
+    /// <summary>Extra photos saved with the job (see JobService.CreateAsync), with their view hints.</summary>
+    private static async Task<IReadOnlyList<InferenceExtraImage>> LoadExtrasAsync(IArtifactStore store, Guid jobId, CancellationToken cancellationToken)
+    {
+        var manifest = await store.ReadAllAsync(jobId, ArtifactNames.ExtraViews, cancellationToken);
+        if (manifest is null)
+            return [];
+        var views = System.Text.Json.JsonSerializer.Deserialize<string[]>(manifest) ?? [];
+        var extras = new List<InferenceExtraImage>();
+        for (var i = 0; i < Math.Min(views.Length, ArtifactNames.MaxExtraImages); i++)
+        {
+            if (await store.ReadAllAsync(jobId, ArtifactNames.ExtraImage(i + 1), cancellationToken) is { } png)
+                extras.Add(new InferenceExtraImage(png, JobService.ExtraViewHints.Contains(views[i]) ? views[i] : "auto"));
+        }
+        return extras;
     }
 
     private async Task PollAsync(AppDbContext db, IArtifactStore store, GenerationJob job, CancellationToken stoppingToken)

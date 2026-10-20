@@ -23,11 +23,23 @@ Multipart form with field `image` (PNG/JPEG/WebP, ≤ 20 MB, 64–8192 px per si
 Optional header `Idempotency-Key` (8–64 chars): repeating a request with the same key returns
 the original job (`200`) instead of creating a new one.
 
+Optional multi-photo fields (Stable Fast 3D / SPAR3D engines; TripoSR ignores them):
+
+| Field | Repeat | Meaning |
+|---|---|---|
+| `extraImages` | up to 5 | Photos of other sides of the same object, same limits as `image` |
+| `extraViews` | one per `extraImages`, in order | Where each was taken from: `auto` (default), `front`, `back`, `left`, `right`, `top`, `bottom` (relative to the main photo; `left` = the photographer moved to their left) |
+
+The shape always comes from `image`. Extra photos are background-removed, their camera is
+estimated against the generated mesh (silhouette match, narrowed by the view hint), and they
+colour the surfaces the main photo cannot see. A photo whose camera cannot be matched
+confidently is skipped (see the inference service log); the job still succeeds.
+
 | Status | Meaning |
 |---|---|
 | 202 | Job created (`Location` header points to it), body = `Job` |
 | 200 | Idempotent replay, body = existing `Job` |
-| 400 | `missing_file`, `invalid_image`, `invalid_idempotency_key` |
+| 400 | `missing_file`, `invalid_image`, `invalid_idempotency_key`, `too_many_images`, `invalid_extra_views` |
 | 413 | `file_too_large` |
 | 429 | `rate_limited` (uploads/minute) or `too_many_active_jobs` |
 
@@ -114,7 +126,7 @@ refuses to start unless `Inference:ApiKey` is set, and then every `/internal/*` 
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/health` | `200` when models are loaded, `503` while loading/failed. Body `{ status, modelState, reason, executionProvider, queuedJobs }` |
-| POST | `/internal/jobs/` | Multipart `image`; optional `resolution` (32–320), `foregroundRatio` (0.5–1.0), `removeBackground` (bool). `202` + job, `400`, `413`, `503 queue_full` |
+| POST | `/internal/jobs/` | Multipart `image`; optional `resolution` (32–320), `foregroundRatio` (0.5–1.0), `removeBackground` (bool) (TripoSR). SF3D/SPAR3D service: optional repeated `extraImages` + `extraViews` (see `POST /api/models`). `202` + job, `400`, `413`, `503 queue_full` |
 | GET | `/internal/jobs/{id}` | Job status, stage, progress, artifacts, mesh stats (model units) |
 | GET | `/internal/jobs/{id}/artifacts/{name}` | `name` ∈ {`mesh.glb`, `input.png`} only |
 | POST | `/internal/jobs/{id}/cancel` | `202`, `409` if finished |

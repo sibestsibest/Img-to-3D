@@ -8,12 +8,12 @@ export const STAGES: { key: string; label: string }[] = [
   { key: 'PreparingImage', label: 'Preparing image' },
   { key: 'RemovingBackground', label: 'Removing background' },
   { key: 'EncodingImage', label: 'Running TripoSR image encoder' },
-  // Stable Fast 3D runs encoder, mesh extraction and texture baking as one model call.
-  { key: 'GeneratingMesh', label: 'Generating textured mesh (Stable Fast 3D)' },
+  // Stable Fast 3D / SPAR3D run encoder, mesh extraction and texture baking as one model call.
+  { key: 'GeneratingMesh', label: 'Generating textured mesh (Stable Fast 3D / SPAR3D)' },
   { key: 'EvaluatingDensity', label: 'Evaluating 3D density grid' },
   { key: 'ExtractingSurface', label: 'Extracting surface (marching cubes)' },
   { key: 'ColoringVertices', label: 'Colouring vertices' },
-  { key: 'Exporting', label: 'Exporting mesh' },
+  { key: 'Exporting', label: 'Projecting photos onto the texture, exporting mesh' },
   { key: 'Finalizing', label: 'Creating GLB and STL files' },
 ]
 

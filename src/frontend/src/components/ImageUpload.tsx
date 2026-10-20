@@ -90,7 +90,8 @@ export function ImageUpload({ file, disabled, onSelect }: Props) {
       {error && <p className="field-error">{error}</p>}
       <ul className="tips">
         <li>Use one part, centred, on a plain contrasting background.</li>
-        <li>A single photo cannot show hidden sides; the back and interior are guessed by the AI.</li>
+        <li>Use the original high-resolution photo (e.g. straight from the phone, 3000+ px), not one re-compressed by a chat app.</li>
+        <li>The main photo defines the shape. Hidden sides are guessed by the AI unless you add photos of them below.</li>
       </ul>
     </div>
   )

@@ -4,6 +4,14 @@ export type JobStatus = 'Pending' | 'Processing' | 'Succeeded' | 'Failed' | 'Can
 
 export type ScaleAxis = 'X' | 'Y' | 'Z' | 'Longest'
 
+/** Where an extra photo was taken from, relative to the main photo (the server re-validates). */
+export type ExtraView = 'auto' | 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom'
+
+export interface ExtraPhoto {
+  file: File
+  view: ExtraView
+}
+
 export interface Dimensions {
   x: number
   y: number

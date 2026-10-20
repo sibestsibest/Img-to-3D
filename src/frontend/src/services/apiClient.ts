@@ -1,4 +1,5 @@
-import type { Job, PagedResult, ProblemDetails, ScaleAxis } from '../types/api'
+import type { ExtraPhoto, Job, PagedResult, ProblemDetails, ScaleAxis } from '../types/api'
+import { apiLog, formatBody, summarize } from './apiLog'
 
 /** Error carrying the backend's stable error code and a user-presentable message. */
 export class ApiError extends Error {
@@ -33,21 +34,55 @@ export async function toApiError(response: Response): Promise<ApiError> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = `${BASE}${path}`
+  const method = init?.method ?? 'GET'
+  const started = performance.now()
+  const log = (status: number, summary: string, body: unknown, response?: Response, bodyBytes?: number) =>
+    apiLog.record({
+      method,
+      url,
+      status,
+      durationMs: Math.round(performance.now() - started),
+      sizeBytes: (response && Number(response.headers.get('Content-Length'))) || bodyBytes || null,
+      summary,
+      correlationId: response?.headers.get('X-Correlation-ID') ?? null,
+      body: formatBody(body),
+      source: 'api',
+    })
+
+  apiLog.markClientRequest(url)
   let response: Response
   try {
-    response = await fetch(`${BASE}${path}`, { credentials: 'same-origin', ...init })
-  } catch {
+    response = await fetch(url, { credentials: 'same-origin', ...init })
+  } catch (e) {
+    // A request cancelled by the page (e.g. switching jobs) is not a failure worth logging.
+    if (!(e instanceof DOMException && e.name === 'AbortError')) log(0, 'network_error', undefined)
     throw new ApiError(0, 'network_error', 'Cannot reach the server. Check that the API is running.')
   }
-  if (!response.ok) throw await toApiError(response)
-  if (response.status === 204) return undefined as T
-  return (await response.json()) as T
+  if (!response.ok) {
+    const error = await toApiError(response.clone())
+    const text = await response.text().catch(() => undefined)
+    log(response.status, `${error.code}: ${error.message}`, text, response, text?.length)
+    throw error
+  }
+  if (response.status === 204) {
+    log(response.status, 'No Content', undefined, response)
+    return undefined as T
+  }
+  const text = await response.text()
+  const body = JSON.parse(text) as T
+  log(response.status, summarize(body), body, response, new TextEncoder().encode(text).length)
+  return body
 }
 
 export const api = {
-  createJob(file: File, idempotencyKey: string): Promise<Job> {
+  createJob(file: File, idempotencyKey: string, extras: ExtraPhoto[] = []): Promise<Job> {
     const body = new FormData()
     body.append('image', file)
+    for (const extra of extras) {
+      body.append('extraImages', extra.file)
+      body.append('extraViews', extra.view)
+    }
     return request<Job>('/models', { method: 'POST', body, headers: { 'Idempotency-Key': idempotencyKey } })
   },
 

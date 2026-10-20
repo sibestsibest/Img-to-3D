@@ -33,7 +33,8 @@ class FakeEngine:
     def ensure_loaded(self):
         pass
 
-    def generate(self, image_bytes, progress, is_cancelled):
+    def generate(self, image_bytes, progress, is_cancelled, extras=None):
+        self.last_extras = extras
         progress("GeneratingMesh", None)
         deadline = time.time() + self.delay
         while time.time() < deadline:

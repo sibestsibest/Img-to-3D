@@ -16,9 +16,9 @@ export default function App() {
           {status !== 'ok' && status !== 'unknown' ? ` (${status})` : ''}
         </span>
         {/* Required attribution under the Stability AI Community License. */}
-        {engine === 'StableFast3D' && <span className="app__attribution small">Powered by Stability AI</span>}
+        {(engine === 'StableFast3D' || engine === 'SPAR3D') && <span className="app__attribution small">Powered by Stability AI</span>}
       </header>
-      <WorkspacePage />
+      <WorkspacePage engine={engine} />
     </div>
   )
 }

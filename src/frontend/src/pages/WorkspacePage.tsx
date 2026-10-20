@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
+import { ApiLogPanel } from '../components/ApiLogPanel'
 import { DimensionsPanel } from '../components/DimensionsPanel'
 import { DownloadPanel } from '../components/DownloadPanel'
 import { ErrorBanner } from '../components/ErrorBanner'
+import { ExtraPhotos } from '../components/ExtraPhotos'
 import { GenerationStatus } from '../components/GenerationStatus'
 import { HistoryList } from '../components/HistoryList'
 import { ImageUpload } from '../components/ImageUpload'
 import { ModelViewer } from '../components/ModelViewer'
 import { useGenerate } from '../hooks/useGenerate'
 import { useJob } from '../hooks/useJob'
+import { usesExtraPhotos } from '../hooks/useEngineInfo'
 import { useJobHistory } from '../hooks/useJobHistory'
 import { api, urls } from '../services/apiClient'
-import type { Job, ScaleAxis } from '../types/api'
+import type { ExtraPhoto, Job, ScaleAxis } from '../types/api'
 
-export function WorkspacePage() {
+export function WorkspacePage({ engine }: { engine: string | null }) {
   const [file, setFile] = useState<File | null>(null)
+  const [extras, setExtras] = useState<ExtraPhoto[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -25,6 +29,7 @@ export function WorkspacePage() {
     (created: Job) => {
       setSelectedId(created.id)
       setFile(null)
+      setExtras([])
       void history.refresh()
     },
     [history.refresh], // eslint-disable-line react-hooks/exhaustive-deps
@@ -71,11 +76,12 @@ export function WorkspacePage() {
         <section className="card">
           <h2>1. Upload an image</h2>
           <ImageUpload file={file} disabled={generate.submitting} onSelect={setFile} />
+          <ExtraPhotos photos={extras} disabled={generate.submitting} supported={usesExtraPhotos(engine)} onChange={setExtras} />
           <button
             type="button"
             className="btn btn--primary btn--block"
             disabled={!file || generate.submitting}
-            onClick={() => file && generate.submit(file)}
+            onClick={() => file && generate.submit(file, usesExtraPhotos(engine) ? extras : [])}
           >
             {generate.submitting ? 'Uploading…' : 'Generate 3D model'}
           </button>
@@ -117,7 +123,7 @@ export function WorkspacePage() {
                 </figure>
                 <figure>
                   <img src={urls.image(job.id, 'preprocessed')} alt="Background removed and re-framed input" />
-                  <figcaption>Background removed, re-framed (TripoSR input)</figcaption>
+                  <figcaption>Background removed, re-framed (model input)</figcaption>
                 </figure>
               </div>
             </details>
@@ -142,6 +148,9 @@ export function WorkspacePage() {
           internal cavities, holes, pegs and fine mechanical details are guessed and are often wrong. Do not rely on the output for
           precise fit or tolerances without checking it against the real part.
         </footer>
+
+        <ApiLogPanel jobId={selectedId} />
+
       </main>
     </div>
   )

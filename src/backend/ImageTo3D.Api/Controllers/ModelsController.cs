@@ -12,11 +12,16 @@ namespace ImageTo3D.Api.Controllers;
 [Produces("application/json")]
 public sealed class ModelsController(JobService jobs) : ControllerBase
 {
-    /// <summary>Upload an image (multipart field "image") and create a generation job.</summary>
+    /// <summary>
+    /// Upload an image (multipart field "image") and create a generation job. Optional
+    /// "extraImages" (up to 5 photos of other sides of the same object) with matching
+    /// "extraViews" hints (auto, front, back, left, right, top, bottom) colour the hidden sides
+    /// from real photos instead of the AI's guess.
+    /// </summary>
     [HttpPost]
     [EnableRateLimiting(RateLimitPolicies.Uploads)]
-    [RequestSizeLimit(60L * 1024 * 1024)]
-    [RequestFormLimits(MultipartBodyLengthLimit = 60L * 1024 * 1024)]
+    [RequestSizeLimit(130L * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 130L * 1024 * 1024)]
     [Consumes("multipart/form-data")]
     [ProducesResponseType<JobDto>(StatusCodes.Status202Accepted)]
     [ProducesResponseType<JobDto>(StatusCodes.Status200OK)]
@@ -25,10 +30,12 @@ public sealed class ModelsController(JobService jobs) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> Create(
         IFormFile? image,
+        [FromForm] List<IFormFile>? extraImages,
+        [FromForm] List<string>? extraViews,
         [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         CancellationToken cancellationToken)
     {
-        var (job, created) = await jobs.CreateAsync(image, idempotencyKey, cancellationToken);
+        var (job, created) = await jobs.CreateAsync(image, extraImages, extraViews, idempotencyKey, cancellationToken);
         return created ? AcceptedAtAction(nameof(Get), new { id = job.Id }, job) : Ok(job);
     }
 

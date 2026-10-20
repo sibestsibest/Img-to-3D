@@ -35,7 +35,18 @@ public sealed partial class JobService(
     TimeProvider time,
     ILogger<JobService> logger)
 {
-    public async Task<(JobDto Job, bool Created)> CreateAsync(IFormFile? file, string? idempotencyKey, CancellationToken cancellationToken)
+    /// <summary>View hints accepted for extra photos (where the camera was relative to the main photo).</summary>
+    public static readonly IReadOnlySet<string> ExtraViewHints = new HashSet<string>(StringComparer.Ordinal) { "auto", "front", "back", "left", "right", "top", "bottom" };
+
+    public Task<(JobDto Job, bool Created)> CreateAsync(IFormFile? file, string? idempotencyKey, CancellationToken cancellationToken) =>
+        CreateAsync(file, null, null, idempotencyKey, cancellationToken);
+
+    public async Task<(JobDto Job, bool Created)> CreateAsync(
+        IFormFile? file,
+        IReadOnlyList<IFormFile>? extraFiles,
+        IReadOnlyList<string>? extraViews,
+        string? idempotencyKey,
+        CancellationToken cancellationToken)
     {
         var o = uploadOptions.Value;
         var ownerHash = owner.OwnerKeyHash;
@@ -55,26 +66,45 @@ public sealed partial class JobService(
         if (file.Length > o.MaxBytes)
             throw new ApiException(StatusCodes.Status413PayloadTooLarge, "file_too_large", $"The image is larger than the {o.MaxBytes / (1024 * 1024)} MB limit.");
 
+        var extras = extraFiles?.Where(f => f.Length > 0).ToList() ?? [];
+        var views = extraViews ?? [];
+        if (extras.Count > o.MaxExtraImages)
+            throw new ApiException(StatusCodes.Status400BadRequest, "too_many_images", $"Upload at most {o.MaxExtraImages} extra photos.");
+        if (views.Count > extras.Count)
+            throw new ApiException(StatusCodes.Status400BadRequest, "invalid_extra_views", "There are more view hints than extra photos.");
+        if (views.FirstOrDefault(v => !ExtraViewHints.Contains(v)) is { } badView)
+            throw new ApiException(StatusCodes.Status400BadRequest, "invalid_extra_views", $"Unknown view '{Truncate(badView)}'. Use one of: {string.Join(", ", ExtraViewHints)}.");
+        if (extras.FirstOrDefault(f => f.Length > o.MaxBytes) is not null)
+            throw new ApiException(StatusCodes.Status413PayloadTooLarge, "file_too_large", $"An extra photo is larger than the {o.MaxBytes / (1024 * 1024)} MB limit.");
+
         var active = await db.Jobs.CountAsync(j => j.OwnerKeyHash == ownerHash && (j.Status == JobStatus.Pending || j.Status == JobStatus.Processing), cancellationToken);
         if (active >= o.MaxActiveJobsPerOwner)
             throw new ApiException(StatusCodes.Status429TooManyRequests, "too_many_active_jobs", $"You already have {active} generations in progress. Wait for one to finish before submitting another.");
 
-        byte[] bytes;
-        await using (var input = file.OpenReadStream())
-        using (var buffer = new MemoryStream((int)file.Length))
-        {
-            await input.CopyToAsync(buffer, cancellationToken);
-            bytes = buffer.ToArray();
-        }
-
+        var limits = new ImageLimits(o.MinDimension, o.MaxDimension, o.MaxPixels);
+        var bytes = await ReadAsync(file, cancellationToken);
         DecodedImage decoded;
         try
         {
-            decoded = ImageDecoder.Decode(bytes, new ImageLimits(o.MinDimension, o.MaxDimension, o.MaxPixels));
+            decoded = ImageDecoder.Decode(bytes, limits);
         }
         catch (ImageValidationException ex)
         {
             throw new ApiException(StatusCodes.Status400BadRequest, "invalid_image", ex.Message);
+        }
+
+        // Extra photos are validated the same way and stored as upright PNGs; only their index names the file.
+        var extraPngs = new List<byte[]>(extras.Count);
+        for (var i = 0; i < extras.Count; i++)
+        {
+            try
+            {
+                extraPngs.Add(ImageDecoder.EncodePng(ImageDecoder.Decode(await ReadAsync(extras[i], cancellationToken), limits).Image));
+            }
+            catch (ImageValidationException ex)
+            {
+                throw new ApiException(StatusCodes.Status400BadRequest, "invalid_image", $"Extra photo {i + 1}: {ex.Message}");
+            }
         }
 
         var extension = decoded.Format switch
@@ -101,6 +131,13 @@ public sealed partial class JobService(
 
         await store.SaveAsync(job.Id, ArtifactNames.FileName(ArtifactKind.Original, extension), bytes, cancellationToken);
         await store.SaveAsync(job.Id, ArtifactNames.FileName(ArtifactKind.SourceImage), ImageDecoder.EncodePng(decoded.Image), cancellationToken);
+        if (extraPngs.Count > 0)
+        {
+            for (var i = 0; i < extraPngs.Count; i++)
+                await store.SaveAsync(job.Id, ArtifactNames.ExtraImage(i + 1), extraPngs[i], cancellationToken);
+            var hints = Enumerable.Range(0, extraPngs.Count).Select(i => i < views.Count ? views[i] : "auto").ToArray();
+            await store.SaveAsync(job.Id, ArtifactNames.ExtraViews, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(hints), cancellationToken);
+        }
 
         db.Jobs.Add(job);
         try
@@ -117,9 +154,19 @@ public sealed partial class JobService(
         }
 
         queue.Enqueue(job.Id);
-        logger.LogInformation("Created job {JobId} ({Format}, {Width}x{Height})", job.Id, extension, job.ImageWidth, job.ImageHeight);
+        logger.LogInformation("Created job {JobId} ({Format}, {Width}x{Height}, {ExtraCount} extra photos)", job.Id, extension, job.ImageWidth, job.ImageHeight, extraPngs.Count);
         return (JobDto.From(job), true);
     }
+
+    private static async Task<byte[]> ReadAsync(IFormFile file, CancellationToken cancellationToken)
+    {
+        await using var input = file.OpenReadStream();
+        using var buffer = new MemoryStream((int)file.Length);
+        await input.CopyToAsync(buffer, cancellationToken);
+        return buffer.ToArray();
+    }
+
+    private static string Truncate(string value) => value.Length > 20 ? value[..20] : value;
 
     public async Task<JobDto> GetAsync(Guid id, CancellationToken cancellationToken) => JobDto.From(await FindAsync(id, cancellationToken, tracking: false));
 

@@ -15,9 +15,8 @@ public static class OnnxSessionFactory
         {
             GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
             ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
+            IntraOpNumThreads = options.EffectiveIntraOpThreads,
         };
-        if (options.IntraOpThreads > 0)
-            sessionOptions.IntraOpNumThreads = options.IntraOpThreads;
 
         if (string.Equals(options.ExecutionProvider, "Cuda", StringComparison.OrdinalIgnoreCase))
         {

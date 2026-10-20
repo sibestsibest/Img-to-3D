@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .engine import Engine, GenerationError
+from .engine import Engine, ExtraImage, GenerationError
 
 log = logging.getLogger("sf3d.jobs")
 
@@ -29,6 +29,7 @@ class Job:
     id: str
     directory: Path
     image: bytes | None
+    extras: list[ExtraImage] = field(default_factory=list)
     status: str = "Queued"
     stage: str = "Queued"
     stage_progress: float | None = None
@@ -81,9 +82,9 @@ class JobManager:
     def stop(self) -> None:
         self._stop.set()
 
-    def submit(self, image: bytes) -> Job | None:
+    def submit(self, image: bytes, extras: list[ExtraImage] | None = None) -> Job | None:
         job_id = str(uuid.uuid4())
-        job = Job(id=job_id, directory=self.work_dir / job_id.replace("-", ""), image=image)
+        job = Job(id=job_id, directory=self.work_dir / job_id.replace("-", ""), image=image, extras=list(extras or []))
         with self._lock:
             self._jobs[job_id] = job
         try:
@@ -148,17 +149,18 @@ class JobManager:
                 job.status = "Running"
                 job.started_at = _now()
                 image, job.image = job.image, None
-            self._process(job, image)
+                extras, job.extras = job.extras, []
+            self._process(job, image, extras)
 
-    def _process(self, job: Job, image: bytes) -> None:
+    def _process(self, job: Job, image: bytes, extras: list[ExtraImage]) -> None:
         def progress(stage: str, fraction: float | None) -> None:
             with self._lock:
                 if job.status not in TERMINAL:
                     job.stage, job.stage_progress = stage, fraction
 
         try:
-            log.info("job %s started", job.id)
-            result = self.engine.generate(image, progress, lambda: job.cancel_requested)
+            log.info("job %s started (%d extra photo(s))", job.id, len(extras))
+            result = self.engine.generate(image, progress, lambda: job.cancel_requested, extras)
             job.directory.mkdir(parents=True, exist_ok=True)
             (job.directory / "mesh.glb").write_bytes(result.glb)
             (job.directory / "input.png").write_bytes(result.preprocessed_png)
@@ -196,3 +198,4 @@ class JobManager:
         job.completed_at = _now()
         job.completed_monotonic = time.monotonic()
         job.image = None
+        job.extras = []
