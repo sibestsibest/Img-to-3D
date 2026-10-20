@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/backend/">
+    <Project Path="src/backend/ImageTo3D.Api/ImageTo3D.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/inference/">
+    <Project Path="src/inference/ImageTo3D.Inference/ImageTo3D.Inference.csproj" />
+  </Folder>
+  <Folder Name="/src/shared/">
+    <Project Path="src/shared/ImageTo3D.Core/ImageTo3D.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/backend/">
+    <Project Path="tests/backend/ImageTo3D.Api.Tests/ImageTo3D.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/inference/">
+    <Project Path="tests/inference/ImageTo3D.Inference.Tests/ImageTo3D.Inference.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/shared/">
+    <Project Path="tests/shared/ImageTo3D.Core.Tests/ImageTo3D.Core.Tests.csproj" />
+  </Folder>
+</Solution>

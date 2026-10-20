@@ -1,0 +1,11 @@
+# Keep the multi-GB models and local artefacts out of the build context.
+models/
+data/
+out/
+samples/
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+.git/
+.env

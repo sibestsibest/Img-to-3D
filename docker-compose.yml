@@ -1,0 +1,45 @@
+# CPU deployment of all three services. Not verified on the development machine (no Docker);
+# see README "Docker". Only the web container publishes a port; the inference service is
+# reachable solely on the internal compose network and requires the shared API key.
+services:
+  inference:
+    build:
+      context: .
+      dockerfile: src/inference/Dockerfile
+    environment:
+      Inference__ApiKey: ${INFERENCE_API_KEY:?Set INFERENCE_API_KEY in .env}
+      Inference__ExecutionProvider: Cpu
+    volumes:
+      - ./models:/models:ro
+      - inference-data:/data
+    # No container healthcheck: the aspnet base image ships without curl/wget.
+    # Probe GET /health from the host or orchestrator instead.
+    deploy:
+      resources:
+        limits:
+          memory: 12g
+
+  api:
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    environment:
+      InferenceService__BaseUrl: http://inference:8080
+      InferenceService__ApiKey: ${INFERENCE_API_KEY:?Set INFERENCE_API_KEY in .env}
+      Storage__RetentionPeriod: ${RETENTION_PERIOD:-7.00:00:00}
+    volumes:
+      - api-data:/data
+    depends_on:
+      - inference
+
+  web:
+    build:
+      context: src/frontend
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      - api
+
+volumes:
+  inference-data:
+  api-data:

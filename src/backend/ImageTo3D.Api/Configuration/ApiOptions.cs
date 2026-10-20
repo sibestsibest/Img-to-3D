@@ -1,0 +1,78 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace ImageTo3D.Api.Configuration;
+
+public sealed class StorageOptions
+{
+    public const string SectionName = "Storage";
+
+    /// <summary>Root for job artifacts. Must be outside any publicly served directory.</summary>
+    [Required]
+    public string RootPath { get; set; } = "../../../data/storage";
+
+    [Required]
+    public string DatabasePath { get; set; } = "../../../data/imageto3d.db";
+
+    /// <summary>Jobs (rows and files) older than this are deleted.</summary>
+    public TimeSpan RetentionPeriod { get; set; } = TimeSpan.FromDays(7);
+
+    public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>Artifact folders without a database row are deleted after this grace period.</summary>
+    public TimeSpan OrphanGracePeriod { get; set; } = TimeSpan.FromHours(1);
+}
+
+public sealed class UploadOptions
+{
+    public const string SectionName = "Upload";
+
+    [Range(1024, 50L * 1024 * 1024)]
+    public long MaxBytes { get; set; } = 20L * 1024 * 1024;
+
+    [Range(16, 4096)]
+    public int MinDimension { get; set; } = 64;
+
+    [Range(256, 16384)]
+    public int MaxDimension { get; set; } = 8192;
+
+    [Range(1, 1_000_000_000)]
+    public long MaxPixels { get; set; } = 40_000_000;
+
+    /// <summary>Maximum unfinished (Pending/Processing) jobs per owner.</summary>
+    [Range(1, 100)]
+    public int MaxActiveJobsPerOwner { get; set; } = 3;
+
+    [Range(1, 1000)]
+    public int UploadsPerMinute { get; set; } = 10;
+}
+
+public sealed class InferenceClientOptions
+{
+    public const string SectionName = "InferenceService";
+
+    [Required]
+    public Uri BaseUrl { get; set; } = new("http://127.0.0.1:5090");
+
+    public string? ApiKey { get; set; }
+
+    /// <summary>Timeout for a single HTTP call to the inference service (not the whole generation).</summary>
+    public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(1.5);
+
+    /// <summary>Overall limit from submission to a final inference status.</summary>
+    public TimeSpan GenerationTimeout { get; set; } = TimeSpan.FromMinutes(40);
+
+    /// <summary>Consecutive failed status polls tolerated before the job is failed.</summary>
+    [Range(1, 1000)]
+    public int MaxConsecutivePollFailures { get; set; } = 20;
+}
+
+public sealed class ModelOutputOptions
+{
+    public const string SectionName = "ModelOutput";
+
+    /// <summary>Initial export size: the longest bounding-box side is scaled to this many millimetres.</summary>
+    [Range(1.0, 10_000.0)]
+    public double DefaultLongestSideMm { get; set; } = 100;
+}

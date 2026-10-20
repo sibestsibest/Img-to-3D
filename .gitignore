@@ -1,0 +1,47 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Node / Vite
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Large model weights (download with scripts/download-models.ps1)
+models/**/*.onnx
+models/**/*.onnx_data
+models/**/*.download
+models/triposr/config.yaml
+models/triposr/LICENSE.txt
+models/triposr/README.txt
+
+# Python (SF3D service)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Third-party checkouts (cloned by scripts/setup-sf3d.ps1)
+third_party/
+
+# Runtime data and local outputs
+data/
+out/
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets
+.env
+appsettings.*.local.json
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+.DS_Store
