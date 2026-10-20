@@ -31,9 +31,15 @@ Browser ──► React + Three.js (Vite, :5173)
 | Engine | Service | Port | Quality | Requirements |
 |---|---|---|---|---|
 | **TripoSR** (default) | `src/inference` (.NET + ONNX Runtime) | 5090 | baseline; vertex colours | nothing beyond .NET |
-| **Stable Fast 3D** | `src/inference-sf3d` (Python + PyTorch) | 5091 | sharper: 384² triplane, baked UV texture + normal map | Python 3.11 (uv), VS C++ Build Tools, gated HF weights, Stability AI Community License |
+| **Stable Fast 3D** | `src/inference-sf3d` (Python + PyTorch) | 5091 | sharp: 384² triplane, denser surface grid, 4096² texture with the photo (Real-ESRGAN-upscaled when small) projected onto visible sides, normal map | Python 3.11 (uv), VS C++ Build Tools, gated HF weights, Stability AI Community License; NVIDIA GPU optional |
+| **SPAR3D** | `src/inference-sf3d` (same code, `.venv-spar3d`) | 5092 | as SF3D, plus point-cloud diffusion for better hidden sides; slower | as SF3D, separate gated HF approval |
 
-Both implement the same internal contract; select one with `.\scripts\dev.ps1 -Engine TripoSR|SF3D`
+With SF3D or SPAR3D the web UI also accepts **up to 5 photos of other sides**: the shape still comes
+from the main photo, and each extra photo (camera estimated automatically, optionally hinted as
+back/left/right/top/bottom) colours the sides the main photo cannot see. With one photo the AI
+guesses the hidden sides.
+
+All implement the same internal contract; select one with `.\scripts\dev.ps1 -Engine TripoSR|SF3D|SPAR3D`
 (or `InferenceService:BaseUrl`). Scaling keeps textures intact: the API wraps the generated GLB in a
 scaled root node instead of re-encoding it. See [src/inference-sf3d/README.md](src/inference-sf3d/README.md).
 
@@ -150,6 +156,9 @@ curl.exe -b cj.txt -o part.stl "http://localhost:5080/api/models/<id>/download?f
 GLB downloads are in metres (as the glTF standard requires) and keep vertex colours; use them for
 viewing or as a base for remodelling.
 
+STL carries geometry only. The SF3D engine's photo projection makes the GLB's colours sharp on the
+photographed side; the printable shape comes from the surface grid (`SF3D_ISOSURFACE_GRID`).
+
 Changing scale only changes size. **It does not fix wrong holes, slots, joints or hidden geometry**,
 and a correctly scaled model is still not dimensionally identical to the original part.
 
@@ -178,6 +187,7 @@ variables (`Section__Key`). Key settings:
 |---|---|---|
 | `Inference:ModelDirectory` | `../../../models` | relative to the inference project |
 | `Inference:ExecutionProvider` | `Cpu` | `Cuda` needs the CUDA build |
+| `Inference:CpuLimit` | 0.8 | fraction of logical CPUs ONNX Runtime uses when `IntraOpThreads` is 0 (SF3D: `SF3D_CPU_LIMIT`) |
 | `Inference:MarchingCubesResolution` | 256 | 32–320; lower = faster, coarser |
 | `Inference:DensityThreshold` | 25 | official TripoSR iso-level |
 | `Inference:KeepLargestComponentOnly` | false | drop floating fragments |

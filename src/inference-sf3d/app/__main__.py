@@ -12,6 +12,7 @@ import sys
 import uvicorn
 
 from .config import Settings
+from .cpu import apply_cpu_limit
 
 
 def is_loopback(host: str) -> bool:
@@ -29,9 +30,12 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=5091)
     args = parser.parse_args()
 
-    if not is_loopback(args.host) and not Settings().api_key:
+    settings = Settings()
+    if not is_loopback(args.host) and not settings.api_key:
         print("Refusing to bind a non-loopback address without SF3D_API_KEY.", file=sys.stderr)
         return 2
+    # Before uvicorn imports the app (and with it numpy/torch), so the thread pools start capped.
+    apply_cpu_limit(settings.cpu_limit)
 
     uvicorn.run("app.main:app", host=args.host, port=args.port, log_level="info", workers=1)
     return 0

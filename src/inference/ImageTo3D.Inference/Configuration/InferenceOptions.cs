@@ -29,9 +29,17 @@ public sealed class InferenceOptions
 
     public int CudaDeviceId { get; set; }
 
-    /// <summary>ONNX Runtime intra-op threads; 0 lets ORT choose.</summary>
+    /// <summary>ONNX Runtime intra-op threads; 0 derives the count from <see cref="CpuLimit"/>.</summary>
     [Range(0, 256)]
     public int IntraOpThreads { get; set; }
+
+    /// <summary>Fraction of logical CPUs inference may use when <see cref="IntraOpThreads"/> is 0 (0.8 = 12 of 16).</summary>
+    [Range(0.05, 1.0)]
+    public double CpuLimit { get; set; } = 0.8;
+
+    /// <summary>Thread count actually given to ONNX Runtime.</summary>
+    public int EffectiveIntraOpThreads =>
+        IntraOpThreads > 0 ? IntraOpThreads : Math.Clamp((int)Math.Floor(Environment.ProcessorCount * CpuLimit), 1, Environment.ProcessorCount);
 
     /// <summary>Marching cubes grid resolution (official default 256).</summary>
     [Range(32, 320)]

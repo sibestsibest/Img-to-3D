@@ -14,11 +14,11 @@ import threading
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 from .config import Settings
-from .engine import Engine, Sf3dEngine
+from .engine import Engine, ExtraImage, Sf3dEngine
 from .jobs import ARTIFACTS, JobManager
 
 logging.basicConfig(level=logging.INFO, format='{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}')
@@ -84,13 +84,17 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             "modelState": engine.state,
             "reason": engine.failure_reason,
             "executionProvider": engine.execution_provider,
-            "engine": "StableFast3D",
+            "engine": getattr(engine, "name", "StableFast3D"),
             "queuedJobs": manager.queued_count(),
         }
         return JSONResponse(body, status_code=200 if engine.state == "Ready" else 503)
 
     @app.post("/internal/jobs/", dependencies=[Depends(require_key)], status_code=202)
-    async def create_job(image: UploadFile | None = None):
+    async def create_job(
+        image: UploadFile | None = None,
+        extraImages: list[UploadFile] | None = File(default=None),  # noqa: N803 - multipart field names
+        extraViews: list[str] | None = Form(default=None),  # noqa: N803
+    ):
         if image is None:
             return problem(400, "Invalid request", "The 'image' file is required.")
         data = await image.read(settings.max_image_bytes + 1)
@@ -100,10 +104,24 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
             return problem(413, "Image too large", f"Images must be at most {settings.max_image_bytes // (1024 * 1024)} MB.")
         if not is_supported_image(data):
             return problem(400, "Unsupported image", "Upload a PNG, JPEG or WebP image.", "invalid_image")
-        job = manager.submit(data)
+
+        files = extraImages or []
+        if len(files) > settings.max_extra_images:
+            return problem(400, "Too many images", f"At most {settings.max_extra_images} extra images are accepted.")
+        views = extraViews or []
+        extras = []
+        for i, upload in enumerate(files):
+            extra = await upload.read(settings.max_image_bytes + 1)
+            if len(extra) > settings.max_image_bytes:
+                return problem(413, "Image too large", f"Images must be at most {settings.max_image_bytes // (1024 * 1024)} MB.")
+            if not is_supported_image(extra):
+                return problem(400, "Unsupported image", f"Extra image {i + 1} is not a PNG, JPEG or WebP image.", "invalid_image")
+            extras.append(ExtraImage(extra, views[i] if i < len(views) else "auto"))
+
+        job = manager.submit(data, extras)
         if job is None:
             return problem(503, "Queue full", "The inference queue is full. Try again later.", "queue_full")
-        log.info("job %s queued (%d bytes)", job.id, len(data))
+        log.info("job %s queued (%d bytes, %d extra photo(s))", job.id, len(data), len(extras))
         return JSONResponse(job.to_dto(), status_code=202, headers={"Location": f"/internal/jobs/{job.id}"})
 
     @app.get("/internal/jobs/{job_id}", dependencies=[Depends(require_key)])
@@ -134,7 +152,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     def delete_job(job_id: str):
         if not manager.delete(job_id):
             return problem(404, "Not found", "Job or artifact not found.")
-        return JSONResponse(None, status_code=204)
+        # A bare 204: JSONResponse(None) writes "null", which uvicorn rejects ("Response content longer than Content-Length").
+        return Response(status_code=204)
 
     return app
 

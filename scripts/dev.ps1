@@ -6,15 +6,16 @@
 .PARAMETER Engine
   TripoSR (default): .NET + ONNX Runtime service on :5090.
   SF3D: Stable Fast 3D Python service on :5091 (run scripts/setup-sf3d.ps1 first; needs HF_TOKEN).
+  SPAR3D: Stable Point-Aware 3D on :5092, better hidden sides, slower (setup-sf3d.ps1 -Engine SPAR3D).
 #>
-param([ValidateSet('TripoSR', 'SF3D')][string]$Engine = 'TripoSR')
+param([ValidateSet('TripoSR', 'SF3D', 'SPAR3D')][string]$Engine = 'TripoSR')
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
-if ($Engine -eq 'SF3D') {
-    $inferenceUrl = 'http://127.0.0.1:5091'
-    Start-Process pwsh -ArgumentList '-NoExit', '-File', "$root/scripts/run-sf3d.ps1"
+if ($Engine -in 'SF3D', 'SPAR3D') {
+    $inferenceUrl = if ($Engine -eq 'SPAR3D') { 'http://127.0.0.1:5092' } else { 'http://127.0.0.1:5091' }
+    Start-Process pwsh -ArgumentList '-NoExit', '-File', "$root/scripts/run-sf3d.ps1", '-Engine', $Engine
 }
 else {
     $inferenceUrl = 'http://127.0.0.1:5090'

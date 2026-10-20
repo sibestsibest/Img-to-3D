@@ -44,6 +44,10 @@ public sealed class UploadOptions
 
     [Range(1, 1000)]
     public int UploadsPerMinute { get; set; } = 10;
+
+    /// <summary>Extra photos of other sides accepted with one job (0 disables multi-photo jobs).</summary>
+    [Range(0, Services.Storage.ArtifactNames.MaxExtraImages)]
+    public int MaxExtraImages { get; set; } = Services.Storage.ArtifactNames.MaxExtraImages;
 }
 
 public sealed class InferenceClientOptions

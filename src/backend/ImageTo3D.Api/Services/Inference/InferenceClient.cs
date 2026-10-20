@@ -13,6 +13,13 @@ public interface IInferenceClient
 
     Task<InferenceJobDto> SubmitAsync(byte[] png, string correlationId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Submits the main photo plus extra photos of other sides. Engines that do not use extra
+    /// photos (the TripoSR service) ignore the extra multipart fields.
+    /// </summary>
+    Task<InferenceJobDto> SubmitAsync(byte[] png, IReadOnlyList<InferenceExtraImage> extras, string correlationId, CancellationToken cancellationToken) =>
+        SubmitAsync(png, correlationId, cancellationToken);
+
     /// <summary>Returns null when the inference service no longer knows the job (e.g. it restarted).</summary>
     Task<InferenceJobDto?> GetJobAsync(Guid inferenceJobId, CancellationToken cancellationToken);
 
@@ -22,6 +29,9 @@ public interface IInferenceClient
 
     Task DeleteAsync(Guid inferenceJobId, CancellationToken cancellationToken);
 }
+
+/// <summary>An extra photo of the object and where it was taken from (auto, front, back, left, right, top, bottom).</summary>
+public sealed record InferenceExtraImage(byte[] Png, string View);
 
 /// <summary>The inference service could not be reached or did not answer in time.</summary>
 public sealed class InferenceUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
@@ -51,12 +61,22 @@ public sealed class InferenceClient(HttpClient http, ILogger<InferenceClient> lo
         }
     }
 
-    public async Task<InferenceJobDto> SubmitAsync(byte[] png, string correlationId, CancellationToken cancellationToken)
+    public Task<InferenceJobDto> SubmitAsync(byte[] png, string correlationId, CancellationToken cancellationToken) =>
+        SubmitAsync(png, [], correlationId, cancellationToken);
+
+    public async Task<InferenceJobDto> SubmitAsync(byte[] png, IReadOnlyList<InferenceExtraImage> extras, string correlationId, CancellationToken cancellationToken)
     {
         using var content = new MultipartFormDataContent();
         var image = new ByteArrayContent(png);
         image.Headers.ContentType = new MediaTypeHeaderValue("image/png");
         content.Add(image, "image", "source.png");
+        for (var i = 0; i < extras.Count; i++)
+        {
+            var extra = new ByteArrayContent(extras[i].Png);
+            extra.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+            content.Add(extra, "extraImages", $"extra-{i + 1}.png");
+            content.Add(new StringContent(extras[i].View), "extraViews");
+        }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "internal/jobs/") { Content = content };
         request.Headers.Add(CorrelationIdMiddleware.HeaderName, correlationId);

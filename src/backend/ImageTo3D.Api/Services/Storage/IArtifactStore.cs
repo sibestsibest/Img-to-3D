@@ -37,6 +37,16 @@ public static class ArtifactNames
         ArtifactKind.Stl => "model.stl",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
+
+    /// <summary>Most extra photos (other sides of the object) a job can carry.</summary>
+    public const int MaxExtraImages = 5;
+
+    /// <summary>Upright PNG of extra photo <paramref name="index"/> (1-based); derived from the index only.</summary>
+    public static string ExtraImage(int index) =>
+        index is >= 1 and <= MaxExtraImages ? $"extra-{index}.png" : throw new ArgumentOutOfRangeException(nameof(index));
+
+    /// <summary>JSON list of the extra photos' view hints, in upload order.</summary>
+    public const string ExtraViews = "extras.json";
 }
 
 /// <summary>Artifact persistence. Local filesystem today; designed so an Azure Blob implementation can replace it.</summary>

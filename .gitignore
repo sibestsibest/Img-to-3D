@@ -13,6 +13,7 @@ dist/
 # Large model weights (download with scripts/download-models.ps1)
 models/**/*.onnx
 models/**/*.onnx_data
+models/**/*.pth
 models/**/*.download
 models/triposr/config.yaml
 models/triposr/LICENSE.txt

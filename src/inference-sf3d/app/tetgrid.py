@@ -50,12 +50,33 @@ def build_cubic_grid(vertices_per_axis: int) -> tuple[np.ndarray, np.ndarray]:
     return vertices, indices
 
 
+def build_cubic_edges(vertices_per_axis: int) -> np.ndarray:
+    """Unique edges of build_cubic_grid, without deduplicating 6 edges x 6 tets per cube.
+
+    Every tetrahedron is a monotone path from a cube's min to its max corner, so each of its edges
+    joins a vertex to one at a non-negative offset: an axis step, a face diagonal or the body
+    diagonal. Listing those 7 offsets per vertex gives each grid edge exactly once. (SF3D's own
+    torch.unique over all tet edges needs tens of GB at 129 vertices per axis.)
+    """
+    n = vertices_per_axis
+    lin = np.arange(n)
+    i, j, k = (a.ravel() for a in np.meshgrid(lin, lin, lin, indexing="ij"))
+    edges = []
+    for di, dj, dk in [(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, 0, 1), (0, 1, 1), (1, 1, 1)]:
+        ok = (i + di < n) & (j + dj < n) & (k + dk < n)
+        a = (i[ok] * n + j[ok]) * n + k[ok]
+        b = ((i[ok] + di) * n + j[ok] + dj) * n + k[ok] + dk
+        edges.append(np.stack([a, b], axis=-1))
+    return np.concatenate(edges, axis=0).astype(np.int64)
+
+
 def cached_grid(directory: Path, vertices_per_axis: int) -> Path:
-    path = directory / f"cubic_{vertices_per_axis}_tets.npz"
+    path = directory / f"cubic_{vertices_per_axis}_tets_v2.npz"
     if not path.exists():
         directory.mkdir(parents=True, exist_ok=True)
         vertices, indices = build_cubic_grid(vertices_per_axis)
+        edges = build_cubic_edges(vertices_per_axis)
         tmp = path.with_suffix(".tmp.npz")
-        np.savez(tmp, vertices=vertices, indices=indices)
+        np.savez(tmp, vertices=vertices, indices=indices, edges=edges)
         tmp.replace(path)
     return path

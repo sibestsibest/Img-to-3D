@@ -8,7 +8,11 @@ export interface EngineInfo {
 const LABELS: Record<string, string> = {
   TripoSR: 'TripoSR · ONNX',
   StableFast3D: 'Stable Fast 3D',
+  SPAR3D: 'Stable Point-Aware 3D (SPAR3D)',
 }
+
+/** Engines that colour hidden sides from extra photos (the Stability AI engines). */
+export const usesExtraPhotos = (engine: string | null) => engine === 'StableFast3D' || engine === 'SPAR3D'
 
 export const engineLabel = (engine: string | null) => (engine ? (LABELS[engine] ?? engine) : 'engine unavailable')
 
