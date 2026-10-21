@@ -141,13 +141,41 @@ full project.
 | POST | `/api/part-designs/{id}/undo`, `/redo` | `409 nothing_to_undo` / `nothing_to_redo`. A new edit after undo discards the redo branch |
 | GET | `/api/part-designs/{id}/parts/{partId}/geometry` | GLB in metres, design coordinates; immutable per part ID |
 | GET | `/api/part-designs/{id}/parts/{partId}/drawing/report` | Sheet parts only. Page, outline size, thickness (`specified` or `estimated`), holes (centre from the outline's lower-left corner, diameter when round) and every outline and drawing check. `409 drawing_unsupported` (not a sheet), `422 outline_failed` (not flat, open surface) or `422 part_too_large_for_page` (larger than A3 at 1:1) |
-| GET | `/api/part-designs/{id}/parts/{partId}/drawing?format=svg\|pdf&download=` | 1:1 cutting sheet. SVG: `width`/`height` in mm equal to the `viewBox` (1 unit = 1 mm), groups `cut` (cutting contours only), `annotation`, `reference` (100 mm bar). PDF: vector, page in whole points (A4 = 595 x 842), text as outlines, no embedded fonts. `Cache-Control: no-store`, `nosniff`, restrictive CSP. Same errors as the report, plus `400 invalid_format` |
+| GET | `/api/part-designs/{id}/parts/{partId}/drawing?format=svg\|pdf\|dxf&download=` | 1:1 cutting sheet. SVG: `width`/`height` in mm equal to the `viewBox` (1 unit = 1 mm), groups `cut` (cutting contours only), `annotation`, `reference` (100 mm bar). PDF: vector, page in whole points (A4 = 595 x 842), text as outlines, no embedded fonts. DXF (`image/vnd.dxf`): ASCII R12, `$INSUNITS` 4 (mm), model space with the origin at the outline's lower-left corner; layer `CUT` = closed polylines of the outer contours and holes only, layer `ANNOTATION` = hole labels and a description under the part. The DXF does not depend on a page, so it is also served for parts larger than A3. Title block / DXF text say `Draft`. `Cache-Control: no-store`, `nosniff`, restrictive CSP. Same errors as the report, plus `400 invalid_format` |
+| GET | `/api/part-designs/{id}/parts/{partId}/stl` | Binary STL of the part in millimetres (design coordinates), any category. `422 stl_failed` for unusable geometry |
+| GET | `/api/part-designs/{id}/export/bom` | Bill of materials, CSV (UTF-8 with BOM, CRLF, invariant numbers), one row per active part in tree order: item, part ID, name, category, review and validation status, quantity, material, method, every manufacturing value, estimated and confirmed dimensions, stock details, issue codes, notes. Text cells starting with `= + - @` are prefixed with `'` |
+| GET | `/api/part-designs/{id}/export/cut-list` | Rod and tube cuts, CSV: one row per distinct cut (same category, material, section, length, angle, fit allowance) with summed quantity, `total_length_mm` and the part names; rows of the same stock share a `stock_group` (`S1`, `S2`…), longest cut first. A missing diameter or cut length falls back to the model estimate and is marked `estimated` in `size_status` / `length_status`. No stock-length nesting |
+| GET | `/api/part-designs/{id}/export/manifest` | Builds a draft package and returns only its `manifest.json` (see below) — a check before downloading or releasing |
+| GET | `/api/part-designs/{id}/export/package` | Draft package (zip), built now and not stored. `409 nothing_to_export` (no active part) or `409 export_blocked` (a part has a validation error, e.g. tube inner ≥ outer) |
+| GET | `/api/part-designs/{id}/releases` | Stored releases, newest first: `{ id, revision, note, sizeBytes, sha256, historySequence, partCount, fileCount, warningCount, createdAt }` |
+| POST | `/api/part-designs/{id}/releases` | JSON `{ note? }` (≤ 500 chars). Builds the next numbered package (`revision` 1, 2, 3… per project), stores the zip and returns `201` with the release. Drawings and DXFs inside say `Rev N`. Same `409` errors as the draft package, plus `409 too_many_releases` (`PartDesign:MaxReleasesPerProject`, default 50) and `409 release_conflict` (concurrent release; retry) |
+| GET | `/api/part-designs/{id}/releases/{revision}/package` | The stored zip, byte for byte (its SHA-256 equals the release's `sha256`), whatever was edited or undone since. `404` for an unknown revision |
 
 Part fields worth knowing: `category` ∈ `sheet, rod, tube, stock_part, custom_3d, needs_review`
 (the analysis never suggests `stock_part`, and uses `needs_review` when its confidence is below
 0.5); `reviewStatus` ∈ `needs_review, user_confirmed`; `estimated.status` is always `estimated`;
 `confirmed.status` is `user_confirmed` once a measured dimension is entered; `validation.status` ∈
 `valid, warning, invalid` with `issues[]` of `{ code, severity, message, source }`.
+
+Export package layout (draft and release are identical apart from `kind`, `revision` and the
+revision label on drawings):
+
+```
+manifest.json            schemaVersion 1; kind draft|release; revision; note; createdAt (UTC); units "mm";
+                         project { id, name, sourceJobId, sourceFileName, mmPerModelUnit, scaleStatus,
+                         historySequence, updatedAt }; parts[] { item, id, name, category, reviewStatus,
+                         validationStatus, quantity, files[] }; files[] { path, kind, partId, bytes, sha256 };
+                         warnings[] { code, severity, message, partId }
+README.txt               contents and printing instructions
+bom.csv, cut-list.csv    as the endpoints above
+drawings/NN-<name>-<id8>.pdf|svg|dxf   sheet parts
+stl/NN-<name>-<id8>.stl                every part, millimetres
+```
+
+`NN` is the item number (tree order). Parts with warnings are included and each warning is listed
+(including `not_reviewed` for parts the user has not confirmed). A sheet part whose outline cannot
+be extracted gets no drawing (`outline_failed`), and one larger than A3 gets only the DXF
+(`part_too_large_for_page`).
 
 ## Internal inference API (`http://127.0.0.1:5090`)
 

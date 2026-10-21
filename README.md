@@ -171,9 +171,9 @@ and a correctly scaled model is still not dimensionally identical to the origina
 
 | Suite | Count | What it covers |
 |---|---|---|
-| `tests/shared` | 115 | cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
+| `tests/shared` | 123 | DXF R12 export (header, mm units, CUT layer closed contours at 1:1, annotation layer, text encoding), drawing revision label, cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
 | `tests/inference` | 23 | preprocessing ports, job state machine, internal API validation, artifact whitelist, API key, **real TripoSR smoke test** (chair → valid coloured mesh, Y-up proportions, density threshold sanity) and mid-inference cancellation |
-| `tests/backend` | 95 | drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
+| `tests/backend` | 105 | exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
 | `src/frontend` | 54 | drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
 
 Backend tests replace the inference HTTP client with an in-memory fake, so they need no model.
@@ -232,7 +232,7 @@ Limitations of this first version:
 * Parts keep geometry and vertex colours only; SF3D/SPAR3D textures are not carried into parts.
 * Splitting needs a closed surface where the plane crosses it. On an open mesh the cut is not
   capped; the split is refused unless you explicitly keep the open halves, which are then flagged.
-* Not yet available: DXF, drawings for rods/tubes/curved parts, part STL export, bill of materials,
+* Not yet available: drawings for rods/tubes/curved parts, stock-length nesting for the cut list,
   import of external GLB/OBJ/STL files, reference search.
 
 ### Fabrication drawings (sheet parts)
@@ -250,6 +250,26 @@ The smallest A4/A3 page that fits the part at full size is used; nothing is ever
   not a cutting pattern. Bevelled or tapered edges are drawn at mid-thickness with a warning.
 * Parts larger than A3 at 1:1 are refused (split them first); tiled printing is not supported.
 * Dimensions are still those of the generated model at its estimated scale unless you confirmed them.
+* **DXF** (R12, millimetres, 1:1) is offered too: layer `CUT` holds only the closed cutting contours,
+  layer `ANNOTATION` the hole labels and a description you can switch off.
+
+### Exports and releases
+
+The **Export** card of a project offers:
+
+* **BOM** (CSV): one row per part with category, quantity, material, every manufacturing value,
+  estimated and confirmed dimensions and open issues.
+* **Cut list** (CSV): rod and tube cuts grouped by stock (material and section) with summed
+  quantities and total length. Values not entered by you come from the model and are marked
+  `estimated`. Stock-length nesting is not done yet.
+* **STL** of a single part (millimetres), from the drawing card.
+* **Draft package** (zip): drawings (PDF, SVG, DXF) of every sheet part, STL of every part, BOM, cut
+  list, README and `manifest.json` (every file with its SHA-256, parts, warnings). **Check package**
+  shows what it would contain and its warnings first. Drawings in a draft say *Draft*.
+* **Releases**: *Create release* builds the same package once, numbers it (Rev 1, 2, …) and stores
+  it; drawings inside say *Rev N*. A release always downloads exactly as it was made, whatever you
+  edit or undo afterwards. A part with a validation error (for example a tube whose inner diameter
+  is not smaller than its outer) blocks packages and releases until it is fixed.
 
 ## GPU (CUDA)
 

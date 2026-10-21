@@ -1151,3 +1151,30 @@ details.card summary {
 .btn--primary .btn__sub {
   color: rgba(255, 255, 255, 0.85);
 }
+
+.export-panel h3 {
+  margin: 0.9rem 0 0.3rem;
+  font-size: 0.95rem;
+}
+
+.export-check {
+  margin-top: 0.5rem;
+}
+
+.export-release {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.export-release input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}

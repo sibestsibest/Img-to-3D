@@ -97,6 +97,10 @@ public sealed class PartDesignOptions
 
     [Range(1, 1000)]
     public int MaxProjectsPerOwner { get; set; } = 100;
+
+    /// <summary>Stored releases per project; each keeps its own zip, so this bounds disk use.</summary>
+    [Range(1, 1000)]
+    public int MaxReleasesPerProject { get; set; } = 50;
 }
 
 public sealed class ModelOutputOptions

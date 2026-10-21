@@ -1,5 +1,15 @@
 import type { ExtraPhoto, Job, PagedResult, ProblemDetails, ScaleAxis } from '../types/api'
-import type { DrawingReport, PartDesignProject, PartDesignSummary, SplitPlane, SplitPreview, UpdatePartRequest } from '../types/partDesign'
+import type {
+  DesignRelease,
+  DrawingFormat,
+  DrawingReport,
+  ExportManifest,
+  PartDesignProject,
+  PartDesignSummary,
+  SplitPlane,
+  SplitPreview,
+  UpdatePartRequest,
+} from '../types/partDesign'
 import { apiLog, formatBody, summarize } from './apiLog'
 
 /** Error carrying the backend's stable error code and a user-presentable message. */
@@ -122,6 +132,9 @@ export const designApi = {
   previewSplit: (id: string, partId: string, plane: SplitPlane) => request<SplitPreview>(partPath(id, partId, '/split/preview'), json('POST', plane)),
   split: (id: string, partId: string, plane: SplitPlane) => request<PartDesignProject>(partPath(id, partId, '/split'), json('POST', plane)),
   drawingReport: (id: string, partId: string, signal?: AbortSignal) => request<DrawingReport>(partPath(id, partId, '/drawing/report'), { signal }),
+  exportManifest: (id: string, signal?: AbortSignal) => request<ExportManifest>(designPath(id, '/export/manifest'), { signal }),
+  releases: (id: string, signal?: AbortSignal) => request<DesignRelease[]>(designPath(id, '/releases'), { signal }),
+  createRelease: (id: string, note?: string) => request<DesignRelease>(designPath(id, '/releases'), json('POST', { note })),
   undo: (id: string) => request<PartDesignProject>(designPath(id, '/undo'), { method: 'POST' }),
   redo: (id: string) => request<PartDesignProject>(designPath(id, '/redo'), { method: 'POST' }),
 }
@@ -131,8 +144,15 @@ export const urls = {
   /** Part geometry is immutable per part ID, so the URL needs no cache-busting. */
   partGeometry: (projectId: string, partId: string) => `${BASE}${partPath(projectId, partId, '/geometry')}`,
   /** Drawings depend on editable metadata, so <version> (the project's updatedAt) busts the browser cache. */
-  drawing: (projectId: string, partId: string, format: 'svg' | 'pdf', version: string, download = false) =>
+  drawing: (projectId: string, partId: string, format: DrawingFormat, version: string, download = false) =>
     `${BASE}${partPath(projectId, partId, '/drawing')}?format=${format}${download ? '&download=true' : ''}&v=${encodeURIComponent(version)}`,
+  /** Exports depend on editable metadata too, so <version> busts the cache. */
+  partStl: (projectId: string, partId: string, version: string) => `${BASE}${partPath(projectId, partId, '/stl')}?v=${encodeURIComponent(version)}`,
+  bom: (projectId: string, version: string) => `${BASE}${designPath(projectId, '/export/bom')}?v=${encodeURIComponent(version)}`,
+  cutList: (projectId: string, version: string) => `${BASE}${designPath(projectId, '/export/cut-list')}?v=${encodeURIComponent(version)}`,
+  draftPackage: (projectId: string, version: string) => `${BASE}${designPath(projectId, '/export/package')}?v=${encodeURIComponent(version)}`,
+  /** Release packages never change, so the URL needs no cache-busting. */
+  releasePackage: (projectId: string, revision: number) => `${BASE}${designPath(projectId, `/releases/${revision}/package`)}`,
   preview: (job: Job) => `${BASE}/models/${job.id}/preview?v=${job.scale?.mmPerModelUnit ?? 0}`,
   download: (job: Job, format: 'glb' | 'stl') => `${BASE}/models/${job.id}/download?format=${format}`,
   image: (id: string, kind: 'source' | 'preprocessed') => `${BASE}/models/${id}/image?kind=${kind}`,
