@@ -10,6 +10,14 @@ import type {
   SplitPreview,
   UpdatePartRequest,
 } from '../types/partDesign'
+import type {
+  ClearCacheResult,
+  ManualPicture,
+  ReferenceSession,
+  ReferenceSessionSummary,
+  ReferenceSource,
+  UpdateCandidateRequest,
+} from '../types/references'
 import { apiLog, formatBody, summarize } from './apiLog'
 
 /** Error carrying the backend's stable error code and a user-presentable message. */
@@ -139,6 +147,44 @@ export const designApi = {
   redo: (id: string) => request<PartDesignProject>(designPath(id, '/redo'), { method: 'POST' }),
 }
 
+const referencePath = (id: string, rest = '') => `/references/${encodeURIComponent(id)}${rest}`
+const candidatePath = (id: string, candidateId: string, rest = '') => referencePath(id, `/candidates/${encodeURIComponent(candidateId)}${rest}`)
+
+export const referenceApi = {
+  sources: () => request<ReferenceSource[]>('/references/sources'),
+  /** Start a session from an uploaded photo, from a generation job's photo, or from a query alone. */
+  create(input: { name?: string; query?: string; image?: File; sourceJobId?: string }): Promise<ReferenceSession> {
+    const body = new FormData()
+    if (input.name) body.append('name', input.name)
+    if (input.query) body.append('query', input.query)
+    if (input.image) body.append('image', input.image)
+    if (input.sourceJobId) body.append('sourceJobId', input.sourceJobId)
+    // A multipart body needs at least one part.
+    if (![...body.keys()].length) body.append('name', '')
+    return request<ReferenceSession>('/references', { method: 'POST', body })
+  },
+  list: (page = 1, pageSize = 50) => request<PagedResult<ReferenceSessionSummary>>(`/references?page=${page}&pageSize=${pageSize}`),
+  get: (id: string, signal?: AbortSignal) => request<ReferenceSession>(referencePath(id), { signal }),
+  update: (id: string, name: string, query: string) => request<ReferenceSession>(referencePath(id), json('PUT', { name, query })),
+  remove: (id: string) => request<void>(referencePath(id), { method: 'DELETE' }),
+  /** Searches the given sources (all enabled ones when omitted); individual source failures come back as statuses. */
+  search: (id: string, query: string, sources?: string[], signal?: AbortSignal) =>
+    request<ReferenceSession>(referencePath(id, '/search'), { ...json('POST', { query, sources }), signal }),
+  addPicture(id: string, picture: ManualPicture): Promise<ReferenceSession> {
+    const body = new FormData()
+    body.append('image', picture.file)
+    for (const key of ['title', 'author', 'pageUrl', 'license', 'licenseUrl'] as const) {
+      const value = picture[key]?.trim()
+      if (value) body.append(key, value)
+    }
+    return request<ReferenceSession>(referencePath(id, '/candidates'), { method: 'POST', body })
+  },
+  updateCandidate: (id: string, candidateId: string, body: UpdateCandidateRequest) =>
+    request<ReferenceSession>(candidatePath(id, candidateId), json('PUT', body)),
+  removeCandidate: (id: string, candidateId: string) => request<ReferenceSession>(candidatePath(id, candidateId), { method: 'DELETE' }),
+  clearCache: () => request<ClearCacheResult>('/references/cache', { method: 'DELETE' }),
+}
+
 /** Relative URLs only: the browser never learns internal service addresses or file paths. */
 export const urls = {
   /** Part geometry is immutable per part ID, so the URL needs no cache-busting. */
@@ -156,4 +202,7 @@ export const urls = {
   preview: (job: Job) => `${BASE}/models/${job.id}/preview?v=${job.scale?.mmPerModelUnit ?? 0}`,
   download: (job: Job, format: 'glb' | 'stl') => `${BASE}/models/${job.id}/download?format=${format}`,
   image: (id: string, kind: 'source' | 'preprocessed') => `${BASE}/models/${id}/image?kind=${kind}`,
+  /** Stored previews never change for a given ID. */
+  referenceThumbnail: (sessionId: string, candidateId: string) => `${BASE}${candidatePath(sessionId, candidateId, '/thumbnail')}`,
+  referenceInput: (sessionId: string, size: 'thumbnail' | 'full' = 'thumbnail') => `${BASE}${referencePath(sessionId, '/input')}?size=${size}`,
 }

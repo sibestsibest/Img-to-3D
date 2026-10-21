@@ -15,6 +15,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<DesignRelease> DesignReleases => Set<DesignRelease>();
 
+    public DbSet<ReferenceSession> ReferenceSessions => Set<ReferenceSession>();
+
+    public DbSet<ReferenceCandidate> ReferenceCandidates => Set<ReferenceCandidate>();
+
+    public DbSet<ReferenceSearchCacheEntry> ReferenceSearchCache => Set<ReferenceSearchCacheEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -84,5 +89,49 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         release.Property(r => r.Sha256).HasMaxLength(64);
         release.HasOne<PartDesignProject>().WithMany().HasForeignKey(r => r.ProjectId).OnDelete(DeleteBehavior.Cascade);
         release.HasIndex(r => new { r.ProjectId, r.Revision }).IsUnique();
+
+        // Like part designs, no foreign key to GenerationJobs: a session keeps its own copy of the photo.
+        var session = modelBuilder.Entity<ReferenceSession>();
+        session.ToTable("ReferenceSessions");
+        session.HasKey(s => s.Id);
+        session.Property(s => s.OwnerKeyHash).HasMaxLength(64).IsRequired();
+        session.Property(s => s.Name).HasMaxLength(100).IsRequired();
+        session.Property(s => s.Query).HasMaxLength(200).IsRequired();
+        session.HasIndex(s => new { s.OwnerKeyHash, s.UpdatedAt });
+        session.HasMany(s => s.Candidates).WithOne().HasForeignKey(c => c.SessionId).OnDelete(DeleteBehavior.Cascade);
+
+        var candidate = modelBuilder.Entity<ReferenceCandidate>();
+        candidate.ToTable("ReferenceCandidates");
+        candidate.HasKey(c => c.Id);
+        candidate.Property(c => c.Origin).HasMaxLength(16).IsRequired();
+        candidate.Property(c => c.Source).HasMaxLength(32).IsRequired();
+        candidate.Property(c => c.SourceItemId).HasMaxLength(100).IsRequired();
+        candidate.Property(c => c.Title).HasMaxLength(300).IsRequired();
+        candidate.Property(c => c.PageUrl).HasMaxLength(2000);
+        candidate.Property(c => c.ImageUrl).HasMaxLength(2000);
+        candidate.Property(c => c.ThumbnailUrl).HasMaxLength(2000);
+        candidate.Property(c => c.Author).HasMaxLength(200);
+        candidate.Property(c => c.License).HasMaxLength(32);
+        candidate.Property(c => c.LicenseRaw).HasMaxLength(100);
+        candidate.Property(c => c.LicenseUrl).HasMaxLength(2000);
+        candidate.Property(c => c.Query).HasMaxLength(200);
+        candidate.Property(c => c.DownloadStatus).HasMaxLength(16);
+        candidate.Property(c => c.DownloadError).HasMaxLength(300);
+        candidate.Property(c => c.Sha256).HasMaxLength(64);
+        candidate.Property(c => c.DuplicateKind).HasMaxLength(8);
+        candidate.Property(c => c.Decision).HasMaxLength(16);
+        candidate.Property(c => c.ImageKind).HasMaxLength(16);
+        candidate.Property(c => c.Relation).HasMaxLength(24);
+        candidate.Property(c => c.Note).HasMaxLength(1000);
+        candidate.HasIndex(c => new { c.SessionId, c.Source, c.SourceItemId }).IsUnique();
+        candidate.HasIndex(c => new { c.SessionId, c.SortOrder });
+
+        var cache = modelBuilder.Entity<ReferenceSearchCacheEntry>();
+        cache.ToTable("ReferenceSearchCache");
+        cache.HasKey(e => e.Key);
+        cache.Property(e => e.Key).HasMaxLength(64);
+        cache.Property(e => e.Source).HasMaxLength(32).IsRequired();
+        cache.Property(e => e.Query).HasMaxLength(200).IsRequired();
+        cache.HasIndex(e => e.ExpiresAt);
     }
 }

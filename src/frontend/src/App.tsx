@@ -2,6 +2,8 @@ import { useHashRoute } from './hooks/useHashRoute'
 import { engineLabel, useEngineInfo } from './hooks/useEngineInfo'
 import { PartDesignListPage } from './pages/PartDesignListPage'
 import { PartDesignPage } from './pages/PartDesignPage'
+import { ReferenceListPage } from './pages/ReferenceListPage'
+import { ReferenceSessionPage } from './pages/ReferenceSessionPage'
 import { WorkspacePage } from './pages/WorkspacePage'
 
 export default function App() {
@@ -23,16 +25,23 @@ export default function App() {
           <a href="#/" aria-current={route.view === 'workspace' ? 'page' : undefined}>
             Generate
           </a>
-          <a href="#/designs" aria-current={route.view !== 'workspace' ? 'page' : undefined}>
+          <a href="#/references" aria-current={route.view === 'references' || route.view === 'reference' ? 'page' : undefined}>
+            References
+          </a>
+          <a href="#/designs" aria-current={route.view === 'designs' || route.view === 'design' ? 'page' : undefined}>
             Part design
           </a>
         </nav>
         {/* Required attribution under the Stability AI Community License. */}
         {(engine === 'StableFast3D' || engine === 'SPAR3D') && <span className="app__attribution small">Powered by Stability AI</span>}
       </header>
-      {route.view === 'workspace' && <WorkspacePage engine={engine} onOpenDesign={(id) => navigate({ view: 'design', id })} />}
+      {route.view === 'workspace' && (
+        <WorkspacePage engine={engine} onOpenDesign={(id) => navigate({ view: 'design', id })} onOpenReferences={(id) => navigate({ view: 'reference', id })} />
+      )}
       {route.view === 'designs' && <PartDesignListPage onOpen={(id) => navigate({ view: 'design', id })} onBack={() => navigate({ view: 'workspace' })} />}
       {route.view === 'design' && <PartDesignPage key={route.id} id={route.id} onBack={() => navigate({ view: 'designs' })} />}
+      {route.view === 'references' && <ReferenceListPage onOpen={(id) => navigate({ view: 'reference', id })} onBack={() => navigate({ view: 'workspace' })} />}
+      {route.view === 'reference' && <ReferenceSessionPage key={route.id} id={route.id} onBack={() => navigate({ view: 'references' })} />}
     </div>
   )
 }

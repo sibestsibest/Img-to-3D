@@ -11,6 +11,8 @@ public static class RateLimitPolicies
 {
     public const string Uploads = "uploads";
 
+    public const string ReferenceSearches = "reference-searches";
+
     public static void AddApiRateLimiting(this IServiceCollection services)
     {
         services.AddRateLimiter(options =>
@@ -40,6 +42,14 @@ public static class RateLimitPolicies
             options.AddPolicy(Uploads, context =>
             {
                 var limit = context.RequestServices.GetRequiredService<IOptions<UploadOptions>>().Value.UploadsPerMinute;
+                var key = context.Items[OwnerCookieMiddleware.ItemKey] as string ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions { PermitLimit = limit, Window = TimeSpan.FromMinutes(1) });
+            });
+
+            // Each reference search calls several external services: limit per owner to stay polite to them.
+            options.AddPolicy(ReferenceSearches, context =>
+            {
+                var limit = context.RequestServices.GetRequiredService<IOptions<ReferenceSearchOptions>>().Value.SearchesPerMinute;
                 var key = context.Items[OwnerCookieMiddleware.ItemKey] as string ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
                 return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions { PermitLimit = limit, Window = TimeSpan.FromMinutes(1) });
             });

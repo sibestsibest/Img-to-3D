@@ -70,13 +70,15 @@ public class DatabaseMigrationTests
             var job = await db.Jobs.SingleAsync();
             Assert.Equal("part.png", job.OriginalFileName);
             Assert.Equal(100, job.MmPerModelUnit);
-            Assert.Empty(await db.PartDesigns.ToListAsync()); // new table exists and is queryable
+            Assert.Empty(await db.PartDesigns.ToListAsync()); // new tables exist and are queryable
+            Assert.Empty(await db.ReferenceSessions.ToListAsync());
         }
 
         SqliteConnection.ClearAllPools();
         var applied = Query(path, "SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId");
         Assert.Equal(DatabaseInitializer.BaselineMigration, applied[0]);
         Assert.Contains(applied, m => m.EndsWith("_AddPartDesign", StringComparison.Ordinal));
+        Assert.Contains(applied, m => m.EndsWith("_AddReferenceSearch", StringComparison.Ordinal));
         Assert.Equal(["1"], Query(path, "SELECT CAST(COUNT(*) AS TEXT) FROM GenerationJobs"));
     }
 
@@ -104,7 +106,7 @@ public class DatabaseMigrationTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Empty(db.Database.GetPendingMigrations());
-        Assert.Equal(3, db.Database.GetAppliedMigrations().Count());
+        Assert.Equal(4, db.Database.GetAppliedMigrations().Count());
         // WAL lets the background worker and requests write concurrently (EnsureCreated used to set it).
         Assert.Equal("wal", db.Database.SqlQueryRaw<string>("SELECT journal_mode AS \"Value\" FROM pragma_journal_mode").AsEnumerable().Single());
     }

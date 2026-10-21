@@ -171,12 +171,13 @@ and a correctly scaled model is still not dimensionally identical to the origina
 
 | Suite | Count | What it covers |
 |---|---|---|
-| `tests/shared` | 123 | DXF R12 export (header, mm units, CUT layer closed contours at 1:1, annotation layer, text encoding), drawing revision label, cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
+| `tests/shared` | 127 | perceptual hash (resize/JPEG tolerance, distinct pictures, transparency) and thumbnails, DXF R12 export (header, mm units, CUT layer closed contours at 1:1, annotation layer, text encoding), drawing revision label, cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
 | `tests/inference` | 23 | preprocessing ports, job state machine, internal API validation, artifact whitelist, API key, **real TripoSR smoke test** (chair → valid coloured mesh, Y-up proportions, density threshold sanity) and mid-inference cancellation |
-| `tests/backend` | 105 | exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
-| `src/frontend` | 54 | drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
+| `tests/backend` | 147 | reference search against a fake web (attribution and licence normalisation, previews and their size/host/redirect limits, cache and clearing, per-source failures with bounded retries, timeouts, rate limiting, empty and malformed answers, disabled sources, exact/near duplicates and input match, review decisions, manual pictures, sessions from jobs, owner isolation, no credentials sent, cancellation), exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
+| `src/frontend` | 64 | reference filters, licence tones, source outcomes, reference API calls and routes, drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
 
-Backend tests replace the inference HTTP client with an in-memory fake, so they need no model.
+Backend tests replace the inference HTTP client with an in-memory fake, so they need no model, and
+the reference-search HTTP handler with a fake web, so they never contact the internet.
 
 ## Configuration
 
@@ -204,12 +205,55 @@ variables (`Section__Key`). Key settings:
 | `Storage:DesignRootPath` | `data/designs` | part-design projects; never touched by job retention |
 | `PartDesign:MaxSourceTriangles` | 2,000,000 | larger meshes are refused (analysis runs in the request) |
 | `PartDesign:MaxAnalysedParts` | 64 | further pieces are grouped as "fragments" |
+| `Storage:ReferenceRootPath` | `data/references` | reference searches (input photo, previews); never touched by job retention |
+| `Storage:ReferenceCachePath` | `data/reference-cache` | disposable download cache; safe to delete at any time |
+| `ReferenceSearch:WikimediaEnabled` / `OpenverseEnabled` / `InternetArchiveEnabled` | `true` | turn individual sources off |
+| `ReferenceSearch:UserAgent` | `ImageTo3D/0.4 (…)` | add your contact details if you search a lot (Wikimedia policy) |
+| `ReferenceSearch:SourceTimeout` / `MaxRetries` | 12 s / 1 | per source; 429 is never retried |
+| `ReferenceSearch:ResultsPerSource` | 20 | Openverse allows at most 20 without an account |
+| `ReferenceSearch:CacheTtl` | 7 days | cached search responses |
+| `ReferenceSearch:ThumbnailMaxSide` / `ThumbnailMaxBytes` | 640 px / 4 MB | only previews are downloaded |
+| `ReferenceSearch:NearDuplicateDistance` | 6 | dHash bits (of 64) for a near duplicate |
 
 The SQLite schema is managed by EF Core migrations (`src/backend/ImageTo3D.Api/Data/Migrations`),
 applied on start. A database created by an older version (before migrations, by `EnsureCreated`)
 is detected and baselined in place: its existing columns are checked and the first migration is
 recorded as applied, so existing jobs are kept. Add a migration with
 `dotnet ef migrations add <Name> --output-dir Data/Migrations` from the API project folder.
+
+## Reference search
+
+**References** (`#/references`), or **Find references for this photo** next to a job, starts a
+search for existing pictures of the object before you rely on a generated model. Enter what it is
+(kit or part name; there is no automatic image recognition yet) and search:
+
+| Source | Access | Licence data |
+|---|---|---|
+| Wikimedia Commons (MediaWiki API) | free, no account | per file (`extmetadata`) |
+| Openverse (`api.openverse.org`) | free, no account; anonymous requests are rate limited | per image (Creative Commons) |
+| Internet Archive (advanced search, images only) | free, no account | often missing, then shown as unknown |
+
+No paid API, key, login cookie or scraping is used. Each source runs in parallel with its own
+timeout and one retry, reports its own status (ok, no results, failed, timed out, rate limited,
+disabled), and never fails the others; with every source down the page still offers **search by
+hand** links (Google/Bing/DuckDuckGo images, Commons, Openverse, Gundam Wiki, HobbyLink Japan,
+Sketchfab, Printables) and **Add your own picture**. Every result keeps its source page, direct
+image address when known, title, author, licence (normalised, with the source's own wording),
+search query and retrieval time; the attribution line is built from them.
+
+Only previews are downloaded (at most 640 px, 4 MB), over HTTPS and only from the hosts each source
+serves images from (redirects are checked hop by hop), then re-encoded as JPEG. Pictures are
+fingerprinted with SHA-256 (same file) and a 64-bit difference hash (same picture re-encoded or
+resized) to flag duplicates and pictures that are your input photo itself. Search responses and
+downloads are cached (7 days, shared; `DELETE /api/references/cache` or **Clear cache** removes them
+without touching sessions). You accept or reject each picture and can note what it is (photo,
+render, drawing) and how it relates to the object (same object, variant, similar but different).
+
+Limitations: duplicate detection finds copies of the same picture, not other photos of the same
+object; ranking by visual similarity, viewpoint grouping and 3D model search come with local
+embeddings (phase 5). A picture with an unknown licence is for personal reference only; check the
+source page before using any picture. Previews that are not PNG, JPEG or WebP (for example GIF)
+are listed without a preview.
 
 ## Part design
 
@@ -233,7 +277,7 @@ Limitations of this first version:
 * Splitting needs a closed surface where the plane crosses it. On an open mesh the cut is not
   capped; the split is refused unless you explicitly keep the open halves, which are then flagged.
 * Not yet available: drawings for rods/tubes/curved parts, stock-length nesting for the cut list,
-  import of external GLB/OBJ/STL files, reference search.
+  import of external GLB/OBJ/STL files.
 
 ### Fabrication drawings (sheet parts)
 
@@ -307,7 +351,10 @@ fixed set of artifact file names (no user input reaches a path, plus a resolved-
 artifacts stored outside any served directory; per-browser job isolation; rate limiting and an
 active-job cap; configurable timeouts; RFC 7807 errors without stack traces; correlation IDs in
 structured JSON logs; inference bound to loopback, refusing non-loopback binding without an API key;
-no shell execution; no secrets in source control.
+no shell execution; no secrets in source control. Reference search only makes anonymous GET
+requests to the configured public APIs and their image hosts (HTTPS, redirects checked per hop,
+size-capped downloads re-encoded before storage); addresses entered by users are stored as links
+and never fetched.
 
 ### Before exposing to the internet
 
@@ -334,6 +381,9 @@ Verified on the development machine (Windows 10, CPU only):
   downloads → history; plus curl tests of every API endpoint, cancellation during the encoder,
   idempotent resubmits and path-traversal attempts.
 * All automated test suites listed above.
+* Reference search against the live Wikimedia Commons, Openverse and Internet Archive APIs
+  (2026-10-21, query "RX-78-2 gundam", temporary database): all three sources answered, 41 of 41
+  previews downloaded, the repeated search was served from the cache.
 
 Not verified:
 

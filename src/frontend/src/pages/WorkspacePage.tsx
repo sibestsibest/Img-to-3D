@@ -12,10 +12,18 @@ import { useGenerate } from '../hooks/useGenerate'
 import { useJob } from '../hooks/useJob'
 import { usesExtraPhotos } from '../hooks/useEngineInfo'
 import { useJobHistory } from '../hooks/useJobHistory'
-import { api, designApi, urls } from '../services/apiClient'
+import { api, designApi, referenceApi, urls } from '../services/apiClient'
 import type { ExtraPhoto, Job, ScaleAxis } from '../types/api'
 
-export function WorkspacePage({ engine, onOpenDesign }: { engine: string | null; onOpenDesign: (projectId: string) => void }) {
+export function WorkspacePage({
+  engine,
+  onOpenDesign,
+  onOpenReferences,
+}: {
+  engine: string | null
+  onOpenDesign: (projectId: string) => void
+  onOpenReferences: (sessionId: string) => void
+}) {
   const [file, setFile] = useState<File | null>(null)
   const [extras, setExtras] = useState<ExtraPhoto[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -81,6 +89,19 @@ export function WorkspacePage({ engine, onOpenDesign }: { engine: string | null;
     }
   }
 
+  const [creatingReferences, setCreatingReferences] = useState(false)
+  const findReferences = async () => {
+    if (!job) return
+    setCreatingReferences(true)
+    try {
+      onOpenReferences((await referenceApi.create({ sourceJobId: job.id })).id)
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Could not start the reference search.')
+    } finally {
+      setCreatingReferences(false)
+    }
+  }
+
   const busy = job != null && (job.status === 'Pending' || job.status === 'Processing')
 
   return (
@@ -102,6 +123,15 @@ export function WorkspacePage({ engine, onOpenDesign }: { engine: string | null;
         </section>
 
         {job && <GenerationStatus job={job} onCancel={cancel} cancelling={cancelling} />}
+        {job && (
+          <section className="card">
+            <h2>Reference pictures</h2>
+            <p className="muted small">Look for other views, box art or blueprints of this object in free sources, starting from this photo.</p>
+            <button type="button" className="btn btn--small" disabled={creatingReferences} onClick={findReferences}>
+              {creatingReferences ? 'Opening…' : 'Find references for this photo'}
+            </button>
+          </section>
+        )}
         <ErrorBanner message={jobError && jobError.status !== 404 ? jobError.message : null} />
 
         <HistoryList
