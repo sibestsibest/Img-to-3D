@@ -171,10 +171,10 @@ and a correctly scaled model is still not dimensionally identical to the origina
 
 | Suite | Count | What it covers |
 |---|---|---|
-| `tests/shared` | 42 | marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
-| `tests/inference` | 20 | preprocessing ports, job state machine, internal API validation, artifact whitelist, API key, **real TripoSR smoke test** (chair → valid coloured mesh, Y-up proportions, density threshold sanity) and mid-inference cancellation |
-| `tests/backend` | 62 | upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
-| `src/frontend` | 31 | scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
+| `tests/shared` | 115 | cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
+| `tests/inference` | 23 | preprocessing ports, job state machine, internal API validation, artifact whitelist, API key, **real TripoSR smoke test** (chair → valid coloured mesh, Y-up proportions, density threshold sanity) and mid-inference cancellation |
+| `tests/backend` | 95 | drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
+| `src/frontend` | 54 | drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
 
 Backend tests replace the inference HTTP client with an in-memory fake, so they need no model.
 
@@ -201,9 +201,55 @@ variables (`Section__Key`). Key settings:
 | `Storage:RootPath` / `DatabasePath` | `data/` at repo root | outside any web root |
 | `Storage:RetentionPeriod` | 7 days | finished jobs and files are deleted after this |
 | `ModelOutput:DefaultLongestSideMm` | 100 | initial export size |
+| `Storage:DesignRootPath` | `data/designs` | part-design projects; never touched by job retention |
+| `PartDesign:MaxSourceTriangles` | 2,000,000 | larger meshes are refused (analysis runs in the request) |
+| `PartDesign:MaxAnalysedParts` | 64 | further pieces are grouped as "fragments" |
 
-The SQLite schema is created on first start (`EnsureCreated`). There are no EF migrations yet;
-delete `data/imageto3d.db` after schema changes during development.
+The SQLite schema is managed by EF Core migrations (`src/backend/ImageTo3D.Api/Data/Migrations`),
+applied on start. A database created by an older version (before migrations, by `EnsureCreated`)
+is detected and baselined in place: its existing columns are checked and the first migration is
+recorded as applied, so existing jobs are kept. Add a migration with
+`dotnet ef migrations add <Name> --output-dir Data/Migrations` from the API project folder.
+
+## Part design
+
+After a model is generated, **Open in part designer** copies it into a project and breaks it into
+parts (one per glTF node, then per connected piece; tiny floating pieces are grouped). Each part
+gets a suggested fabrication category (sheet, rod, tube, custom 3D, or *needs review*), estimated
+dimensions from an oriented bounding box, and geometry checks (closed, manifold, degenerate faces).
+You can rename, recategorise, enter caliper measurements and manufacturing properties (material,
+thickness, diameters, cut length and angle, fit allowance, stock part details), duplicate, delete,
+and **split a part with a plane**: the mesh is really cut, both halves are capped (including cuts
+with holes, such as through a tube or a frame) and checked to be closed solids. Every edit can be
+undone and redone; projects persist and reopen at `#/designs/<id>`.
+
+Limitations of this first version:
+
+* Dimensions are estimates: they come from the AI model at the scale you set, not from the part.
+  Category suggestions are simple shape rules, always pending your review.
+* Planes are axis-aligned in the UI (the API accepts any orientation). Each half stays one part
+  even if it has several separate pieces.
+* Parts keep geometry and vertex colours only; SF3D/SPAR3D textures are not carried into parts.
+* Splitting needs a closed surface where the plane crosses it. On an open mesh the cut is not
+  capped; the split is refused unless you explicitly keep the open halves, which are then flagged.
+* Not yet available: DXF, drawings for rods/tubes/curved parts, part STL export, bill of materials,
+  import of external GLB/OBJ/STL files, reference search.
+
+### Fabrication drawings (sheet parts)
+
+For a part whose category is **Sheet**, the part designer shows a 1:1 cutting sheet and offers
+**PDF** (print) and **SVG** (cutter/laser software) downloads. The outline is the exact cross-section
+at mid-thickness, simplified within 0.05 mm, with holes kept. The sheet has a top view with overall
+dimensions, an edge view with the thickness, a hole table, a 100 mm verification bar and a title
+block (material, thickness and whether it is specified or estimated, quantity, scale 1:1, units mm).
+The smallest A4/A3 page that fits the part at full size is used; nothing is ever scaled down.
+
+* **Print at 100 % / actual size, never "fit to page"**, then measure the 100 mm bar.
+* The SVG uses millimetre units (1 user unit = 1 mm); the layer `cut` holds only cutting contours.
+* Parts that are not flat (curved, bulky) are refused instead of drawn: an orthographic outline is
+  not a cutting pattern. Bevelled or tapered edges are drawn at mid-thickness with a warning.
+* Parts larger than A3 at 1:1 are refused (split them first); tiled printing is not supported.
+* Dimensions are still those of the generated model at its estimated scale unless you confirmed them.
 
 ## GPU (CUDA)
 

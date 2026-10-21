@@ -167,6 +167,10 @@ public static class GlbWriter
     }
 }
 
+/// <param name="NodeIndex">glTF node index, or -1 when the file has no scene graph.</param>
+/// <param name="Name">Node name, else mesh name; null when neither is set.</param>
+public sealed record GlbNodeMesh(int NodeIndex, string? Name, Mesh Mesh);
+
 /// <summary>
 /// Reads triangle geometry from a GLB file. Supports the subset used by common exporters:
 /// triangle-list primitives with float POSITION, optional COLOR_0 (float or normalized
@@ -178,13 +182,38 @@ public static class GlbReader
     {
         var (json, binRange) = GlbContainer.Parse(data);
         var bin = binRange is { } r ? data.Slice(r.Offset, r.Length) : default;
+        return Build(json, bin, MeshInstances(json));
+    }
 
+    /// <summary>
+    /// One mesh per scene node that references a mesh (world transform applied), in scene-graph
+    /// order. Files without a scene graph yield one entry per mesh with <see cref="GlbNodeMesh.NodeIndex"/> -1.
+    /// </summary>
+    public static IReadOnlyList<GlbNodeMesh> ReadNodes(ReadOnlySpan<byte> data)
+    {
+        var (json, binRange) = GlbContainer.Parse(data);
+        var bin = binRange is { } r ? data.Slice(r.Offset, r.Length) : default;
+        var result = new List<GlbNodeMesh>();
+        foreach (var instance in MeshInstances(json))
+        {
+            var name = instance.Node >= 0
+                ? json["nodes"]?[instance.Node]?["name"]?.GetValue<string>()
+                : null;
+            name ??= json["meshes"]?[instance.Mesh]?["name"]?.GetValue<string>();
+            result.Add(new GlbNodeMesh(instance.Node, name, Build(json, bin, [instance])));
+        }
+
+        return result;
+    }
+
+    private static Mesh Build(JsonNode json, ReadOnlySpan<byte> bin, List<(int Node, int Mesh, Matrix4x4 World)> instances)
+    {
         var positions = new List<float>();
         var colors = new List<byte>();
         var indices = new List<int>();
         var allHaveColors = true;
 
-        foreach (var (meshIndex, world) in MeshInstances(json))
+        foreach (var (_, meshIndex, world) in instances)
         {
             var meshNode = json["meshes"]?[meshIndex] ?? throw new InvalidDataException($"Mesh {meshIndex} missing.");
             var flip = world.GetDeterminant() < 0;
@@ -242,9 +271,9 @@ public static class GlbReader
     /// Mesh references with their world transforms, walking the default scene graph. Files without
     /// scenes/nodes fall back to every mesh with an identity transform.
     /// </summary>
-    private static List<(int Mesh, Matrix4x4 World)> MeshInstances(JsonNode json)
+    private static List<(int Node, int Mesh, Matrix4x4 World)> MeshInstances(JsonNode json)
     {
-        var result = new List<(int, Matrix4x4)>();
+        var result = new List<(int, int, Matrix4x4)>();
         var nodes = json["nodes"]?.AsArray();
         var sceneIndex = json["scene"]?.GetValue<int>() ?? 0;
         var roots = json["scenes"]?[sceneIndex]?["nodes"]?.AsArray();
@@ -253,7 +282,7 @@ public static class GlbReader
         {
             var count = json["meshes"]?.AsArray().Count ?? 0;
             for (var i = 0; i < count; i++)
-                result.Add((i, Matrix4x4.Identity));
+                result.Add((-1, i, Matrix4x4.Identity));
             return result;
         }
 
@@ -265,7 +294,7 @@ public static class GlbReader
             var node = nodes[index] ?? throw new InvalidDataException($"Node {index} missing.");
             var world = LocalMatrix(node) * parent; // System.Numerics uses row vectors: child first, then parent
             if (node["mesh"] is { } mesh)
-                result.Add((mesh.GetValue<int>(), world));
+                result.Add((index, mesh.GetValue<int>(), world));
             foreach (var child in node["children"]?.AsArray() ?? [])
                 Visit(child!.GetValue<int>(), world);
             visiting.Remove(index);

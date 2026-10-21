@@ -3,6 +3,7 @@ using ImageTo3D.Api.Configuration;
 using ImageTo3D.Api.Data;
 using ImageTo3D.Api.Services;
 using ImageTo3D.Api.Services.Inference;
+using ImageTo3D.Api.Services.PartDesign;
 using ImageTo3D.Api.Services.Storage;
 using ImageTo3D.Core.Hosting;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,7 @@ builder.Services.AddOptions<StorageOptions>().Bind(builder.Configuration.GetSect
 builder.Services.AddOptions<UploadOptions>().Bind(builder.Configuration.GetSection(UploadOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<InferenceClientOptions>().Bind(builder.Configuration.GetSection(InferenceClientOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<ModelOutputOptions>().Bind(builder.Configuration.GetSection(ModelOutputOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<PartDesignOptions>().Bind(builder.Configuration.GetSection(PartDesignOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 
 builder.Services.AddDbContext<AppDbContext>((sp, options) =>
 {
@@ -32,6 +34,8 @@ builder.Services.AddSingleton<IArtifactStore, LocalFileArtifactStore>();
 builder.Services.AddSingleton<ArtifactProcessor>();
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddScoped<JobService>();
+builder.Services.AddSingleton<IDesignArtifactStore, LocalDesignArtifactStore>();
+builder.Services.AddScoped<PartDesignService>();
 builder.Services.AddHostedService<GenerationWorker>();
 builder.Services.AddHostedService<RetentionCleanupService>();
 
@@ -53,8 +57,8 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    // Schema is created on first run (no migrations yet; see README).
-    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
+    // EF Core migrations; databases created before migrations existed are baselined first (see README).
+    DatabaseInitializer.Initialize(scope.ServiceProvider.GetRequiredService<AppDbContext>(), app.Logger);
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();

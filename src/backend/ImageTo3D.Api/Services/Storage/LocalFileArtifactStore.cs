@@ -10,8 +10,14 @@ public sealed partial class LocalFileArtifactStore : IArtifactStore
     private readonly string _root;
 
     public LocalFileArtifactStore(IOptions<StorageOptions> options, IHostEnvironment environment)
+        : this(Path.GetFullPath(options.Value.RootPath, environment.ContentRootPath))
     {
-        _root = Path.GetFullPath(options.Value.RootPath, environment.ContentRootPath);
+    }
+
+    /// <summary>Store rooted at an already resolved absolute path (used for the part-design store).</summary>
+    internal LocalFileArtifactStore(string root)
+    {
+        _root = root;
         Directory.CreateDirectory(_root);
     }
 

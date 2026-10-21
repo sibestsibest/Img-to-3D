@@ -29,9 +29,9 @@ __pycache__/
 # Third-party checkouts (cloned by scripts/setup-sf3d.ps1)
 third_party/
 
-# Runtime data and local outputs
-data/
-out/
+# Runtime data and local outputs (root only: src/**/Data/ holds source code)
+/data/
+/out/
 *.db
 *.db-shm
 *.db-wal

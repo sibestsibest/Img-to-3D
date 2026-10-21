@@ -12,10 +12,10 @@ import { useGenerate } from '../hooks/useGenerate'
 import { useJob } from '../hooks/useJob'
 import { usesExtraPhotos } from '../hooks/useEngineInfo'
 import { useJobHistory } from '../hooks/useJobHistory'
-import { api, urls } from '../services/apiClient'
+import { api, designApi, urls } from '../services/apiClient'
 import type { ExtraPhoto, Job, ScaleAxis } from '../types/api'
 
-export function WorkspacePage({ engine }: { engine: string | null }) {
+export function WorkspacePage({ engine, onOpenDesign }: { engine: string | null; onOpenDesign: (projectId: string) => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [extras, setExtras] = useState<ExtraPhoto[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -68,6 +68,19 @@ export function WorkspacePage({ engine }: { engine: string | null }) {
     }
   }
 
+  const [creatingDesign, setCreatingDesign] = useState(false)
+  const openInDesigner = async () => {
+    if (!job) return
+    setCreatingDesign(true)
+    try {
+      onOpenDesign((await designApi.create(job.id)).id)
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Could not create the part design.')
+    } finally {
+      setCreatingDesign(false)
+    }
+  }
+
   const busy = job != null && (job.status === 'Pending' || job.status === 'Processing')
 
   return (
@@ -114,6 +127,16 @@ export function WorkspacePage({ engine }: { engine: string | null }) {
               <DimensionsPanel job={job} onApply={applyScale} />
               <DownloadPanel job={job} />
             </div>
+            <section className="card">
+              <h2>Part design</h2>
+              <p className="muted small">
+                Break this model into editable parts with fabrication properties (styrene sheet, rod, tube, stock or custom). The model
+                is copied at its current scale; set the size above first.
+              </p>
+              <button type="button" className="btn" disabled={creatingDesign} onClick={openInDesigner}>
+                {creatingDesign ? 'Analysing parts…' : 'Open in part designer'}
+              </button>
+            </section>
             <details className="card">
               <summary>What the model saw</summary>
               <div className="compare">
