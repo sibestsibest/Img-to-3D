@@ -104,7 +104,7 @@ function Ground({ url }: { url: string }) {
  * Procedural studio reflections (no network). Needed for PBR materials: Stable Fast 3D often
  * estimates metallic surfaces, which render almost black with direct lights alone.
  */
-function StudioEnvironment() {
+export function StudioEnvironment() {
   const { gl, scene } = useThree()
   useEffect(() => {
     const pmrem = new PMREMGenerator(gl)
@@ -137,7 +137,7 @@ function CameraControls({ resetToken, fitToken }: { resetToken: number; fitToken
   return null
 }
 
-class ViewerErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+export class ViewerErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
 
   static getDerivedStateFromError() {

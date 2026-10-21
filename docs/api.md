@@ -117,6 +117,38 @@ Cancels running work and deletes the database row and every file of the job.
 `status` is `degraded` when the inference service is unreachable or still loading; HTTP 503 only
 when the database is unavailable. No configuration, paths or secrets are exposed.
 
+## Part design (`/api/part-designs`)
+
+A project breaks a succeeded model into derived, individually editable parts. The job's raw mesh
+is copied into the project (`data/designs/<project>/source.glb`) and never modified; projects are
+not affected by job retention or job deletion. Owner isolation is the same as for jobs (other
+browsers get `404`). Lengths are millimetres; coordinates are the viewer's: Y-up, centred on X/Z,
+resting on Y = 0, at the job's scale when the project was created. Every mutating call returns the
+full project.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/part-designs` | JSON `{ sourceJobId, name? }`. Splits the mesh into nodes and connected pieces (small pieces grouped as fragments) and suggests a category per part. `201`; `404 source_not_found`, `409 not_ready`, `410 artifact_missing`, `422 source_too_large` / `no_usable_geometry` |
+| GET | `/api/part-designs?page&pageSize` | Summaries with active part count |
+| GET | `/api/part-designs/{id}` | Project, parts (active and superseded), history (last 50), `canUndo` / `canRedo` |
+| PUT | `/api/part-designs/{id}` | `{ name, fitAllowanceMinMm, fitAllowanceMaxMm }` (not part of the undo history) |
+| DELETE | `/api/part-designs/{id}` | `204`; removes rows and files, never the source job |
+| PUT | `/api/part-designs/{id}/parts/{partId}` | Full replacement of editable fields: `name, category, reviewStatus, units ("mm" only), material, manufacturingMethod, quantity, thicknessMm, diameterMm, outerDiameterMm, innerDiameterMm, cutLengthMm, cutAngleDeg, fitAllowanceMm, confirmedLengthMm/WidthMm/HeightMm, stockDescription, stockSource, needsFurtherModelling, notes`. Out-of-range values → `400`; inconsistent combinations (e.g. tube inner ≥ outer) are saved and reported in `validation` |
+| POST | `/api/part-designs/{id}/parts/{partId}/duplicate` | Copy of the metadata; shares the immutable geometry |
+| DELETE | `/api/part-designs/{id}/parts/{partId}` | Marks the part removed (undoable) |
+| POST | `/api/part-designs/{id}/parts/{partId}/split/preview` | `{ point: [x,y,z], normal: [x,y,z] }` → contours, caps, per-side volume and whether both halves are closed. Nothing is saved |
+| POST | `/api/part-designs/{id}/parts/{partId}/split` | Same body plus `allowOpenResult`. Two new parts; the original becomes `Superseded`. `400 plane_misses_part` / `invalid_plane`; `409 split_not_closed` unless `allowOpenResult` |
+| POST | `/api/part-designs/{id}/undo`, `/redo` | `409 nothing_to_undo` / `nothing_to_redo`. A new edit after undo discards the redo branch |
+| GET | `/api/part-designs/{id}/parts/{partId}/geometry` | GLB in metres, design coordinates; immutable per part ID |
+| GET | `/api/part-designs/{id}/parts/{partId}/drawing/report` | Sheet parts only. Page, outline size, thickness (`specified` or `estimated`), holes (centre from the outline's lower-left corner, diameter when round) and every outline and drawing check. `409 drawing_unsupported` (not a sheet), `422 outline_failed` (not flat, open surface) or `422 part_too_large_for_page` (larger than A3 at 1:1) |
+| GET | `/api/part-designs/{id}/parts/{partId}/drawing?format=svg\|pdf&download=` | 1:1 cutting sheet. SVG: `width`/`height` in mm equal to the `viewBox` (1 unit = 1 mm), groups `cut` (cutting contours only), `annotation`, `reference` (100 mm bar). PDF: vector, page in whole points (A4 = 595 x 842), text as outlines, no embedded fonts. `Cache-Control: no-store`, `nosniff`, restrictive CSP. Same errors as the report, plus `400 invalid_format` |
+
+Part fields worth knowing: `category` ∈ `sheet, rod, tube, stock_part, custom_3d, needs_review`
+(the analysis never suggests `stock_part`, and uses `needs_review` when its confidence is below
+0.5); `reviewStatus` ∈ `needs_review, user_confirmed`; `estimated.status` is always `estimated`;
+`confirmed.status` is `user_confirmed` once a measured dimension is entered; `validation.status` ∈
+`valid, warning, invalid` with `issues[]` of `{ code, severity, message, source }`.
+
 ## Internal inference API (`http://127.0.0.1:5090`)
 
 Not for browsers. Bound to loopback by default; if bound to any other address the service

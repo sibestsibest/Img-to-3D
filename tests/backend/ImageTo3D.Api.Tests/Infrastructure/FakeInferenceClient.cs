@@ -15,6 +15,12 @@ public enum FakeMode
     Hang,
     Lost,
     InvalidMesh,
+
+    /// <summary>Succeeds with the sample box minus its top face (an open surface).</summary>
+    OpenMesh,
+
+    /// <summary>Succeeds with a flat plate, 1.0 x 0.02 x 0.5 model units (100 x 2 x 50 mm after the default scale).</summary>
+    Plate,
 }
 
 /// <summary>In-memory stand-in for the inference service so backend tests need no model or GPU.</summary>
@@ -31,12 +37,24 @@ public sealed class FakeInferenceClient : IInferenceClient
     public ConcurrentBag<Guid> CancelRequests { get; } = [];
 
     /// <summary>Raw mesh returned on success: a 0.5 x 1.0 x 0.25 box in model units (Y-up).</summary>
-    public static byte[] SampleGlb()
+    public static byte[] SampleGlb(bool open = false)
     {
         float[] p =
         [
             0, 0, 0, 0.5f, 0, 0, 0.5f, 1, 0, 0, 1, 0,
             0, 0, 0.25f, 0.5f, 0, 0.25f, 0.5f, 1, 0.25f, 0, 1, 0.25f,
+        ];
+        int[] i = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 6, 2, 3, 7, 6, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5];
+        // The y = 1 face (two triangles at offset 18) is the top in model units (Y-up).
+        return GlbWriter.Write(new Mesh(p, open ? [.. i[..18], .. i[24..]] : i));
+    }
+
+    public static byte[] PlateGlb()
+    {
+        float[] p =
+        [
+            0, 0, 0, 1, 0, 0, 1, 0.02f, 0, 0, 0.02f, 0,
+            0, 0, 0.5f, 1, 0, 0.5f, 1, 0.02f, 0.5f, 0, 0.02f, 0.5f,
         ];
         int[] i = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 6, 2, 3, 7, 6, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5];
         return GlbWriter.Write(new Mesh(p, i));
@@ -85,7 +103,13 @@ public sealed class FakeInferenceClient : IInferenceClient
     {
         var mode = _jobs[inferenceJobId].Mode;
         if (name == InferenceArtifactNames.Mesh)
-            return Task.FromResult(mode == FakeMode.InvalidMesh ? "glTF-not-really"u8.ToArray() : SampleGlb());
+            return Task.FromResult(mode switch
+            {
+                FakeMode.InvalidMesh => "glTF-not-really"u8.ToArray(),
+                FakeMode.OpenMesh => SampleGlb(open: true),
+                FakeMode.Plate => PlateGlb(),
+                _ => SampleGlb(),
+            });
         return Task.FromResult(TestImages.Png(64, 64));
     }
 

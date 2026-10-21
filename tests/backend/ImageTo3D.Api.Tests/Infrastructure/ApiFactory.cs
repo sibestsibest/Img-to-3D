@@ -26,6 +26,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         {
             ["Storage:RootPath"] = Path.Combine(Root, "storage"),
             ["Storage:DatabasePath"] = Path.Combine(Root, "test.db"),
+            ["Storage:DesignRootPath"] = Path.Combine(Root, "designs"),
             ["InferenceService:PollInterval"] = "00:00:00.020",
             ["InferenceService:GenerationTimeout"] = "00:00:05",
             ["InferenceService:MaxConsecutivePollFailures"] = "3",

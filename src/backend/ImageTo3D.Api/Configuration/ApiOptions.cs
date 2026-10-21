@@ -13,6 +13,10 @@ public sealed class StorageOptions
     [Required]
     public string DatabasePath { get; set; } = "../../../data/imageto3d.db";
 
+    /// <summary>Root for part-design projects. Kept apart from job artifacts so job retention never touches it.</summary>
+    [Required]
+    public string DesignRootPath { get; set; } = "../../../data/designs";
+
     /// <summary>Jobs (rows and files) older than this are deleted.</summary>
     public TimeSpan RetentionPeriod { get; set; } = TimeSpan.FromDays(7);
 
@@ -70,6 +74,29 @@ public sealed class InferenceClientOptions
     /// <summary>Consecutive failed status polls tolerated before the job is failed.</summary>
     [Range(1, 1000)]
     public int MaxConsecutivePollFailures { get; set; } = 20;
+}
+
+public sealed class PartDesignOptions
+{
+    public const string SectionName = "PartDesign";
+
+    /// <summary>Source meshes above this size are refused (analysis runs inside the request).</summary>
+    [Range(1, 20_000_000)]
+    public int MaxSourceTriangles { get; set; } = 2_000_000;
+
+    /// <summary>Most parts created by the analysis; smaller pieces beyond it are grouped as fragments.</summary>
+    [Range(1, 500)]
+    public int MaxAnalysedParts { get; set; } = 64;
+
+    /// <summary>Connected pieces with fewer triangles than this share of the source are grouped as fragments.</summary>
+    [Range(0.0, 0.5)]
+    public double FragmentTriangleFraction { get; set; } = 0.002;
+
+    [Range(1, 10_000)]
+    public int MaxPartsPerProject { get; set; } = 500;
+
+    [Range(1, 1000)]
+    public int MaxProjectsPerOwner { get; set; } = 100;
 }
 
 public sealed class ModelOutputOptions

@@ -1,4 +1,5 @@
 import type { ExtraPhoto, Job, PagedResult, ProblemDetails, ScaleAxis } from '../types/api'
+import type { DrawingReport, PartDesignProject, PartDesignSummary, SplitPlane, SplitPreview, UpdatePartRequest } from '../types/partDesign'
 import { apiLog, formatBody, summarize } from './apiLog'
 
 /** Error carrying the backend's stable error code and a user-presentable message. */
@@ -102,8 +103,36 @@ export const api = {
   deleteJob: (id: string) => request<void>(`/models/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
+const designPath = (id: string, rest = '') => `/part-designs/${encodeURIComponent(id)}${rest}`
+const partPath = (id: string, partId: string, rest = '') => designPath(id, `/parts/${encodeURIComponent(partId)}${rest}`)
+const json = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+})
+
+export const designApi = {
+  create: (sourceJobId: string, name?: string) => request<PartDesignProject>('/part-designs', json('POST', { sourceJobId, name })),
+  list: (page = 1, pageSize = 50) => request<PagedResult<PartDesignSummary>>(`/part-designs?page=${page}&pageSize=${pageSize}`),
+  get: (id: string, signal?: AbortSignal) => request<PartDesignProject>(designPath(id), { signal }),
+  remove: (id: string) => request<void>(designPath(id), { method: 'DELETE' }),
+  updatePart: (id: string, partId: string, body: UpdatePartRequest) => request<PartDesignProject>(partPath(id, partId), json('PUT', body)),
+  duplicatePart: (id: string, partId: string) => request<PartDesignProject>(partPath(id, partId, '/duplicate'), { method: 'POST' }),
+  removePart: (id: string, partId: string) => request<PartDesignProject>(partPath(id, partId), { method: 'DELETE' }),
+  previewSplit: (id: string, partId: string, plane: SplitPlane) => request<SplitPreview>(partPath(id, partId, '/split/preview'), json('POST', plane)),
+  split: (id: string, partId: string, plane: SplitPlane) => request<PartDesignProject>(partPath(id, partId, '/split'), json('POST', plane)),
+  drawingReport: (id: string, partId: string, signal?: AbortSignal) => request<DrawingReport>(partPath(id, partId, '/drawing/report'), { signal }),
+  undo: (id: string) => request<PartDesignProject>(designPath(id, '/undo'), { method: 'POST' }),
+  redo: (id: string) => request<PartDesignProject>(designPath(id, '/redo'), { method: 'POST' }),
+}
+
 /** Relative URLs only: the browser never learns internal service addresses or file paths. */
 export const urls = {
+  /** Part geometry is immutable per part ID, so the URL needs no cache-busting. */
+  partGeometry: (projectId: string, partId: string) => `${BASE}${partPath(projectId, partId, '/geometry')}`,
+  /** Drawings depend on editable metadata, so <version> (the project's updatedAt) busts the browser cache. */
+  drawing: (projectId: string, partId: string, format: 'svg' | 'pdf', version: string, download = false) =>
+    `${BASE}${partPath(projectId, partId, '/drawing')}?format=${format}${download ? '&download=true' : ''}&v=${encodeURIComponent(version)}`,
   preview: (job: Job) => `${BASE}/models/${job.id}/preview?v=${job.scale?.mmPerModelUnit ?? 0}`,
   download: (job: Job, format: 'glb' | 'stl') => `${BASE}/models/${job.id}/download?format=${format}`,
   image: (id: string, kind: 'source' | 'preprocessed') => `${BASE}/models/${id}/image?kind=${kind}`,
