@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using ImageTo3D.Api.DTOs;
 using ImageTo3D.Api.Models;
 using ImageTo3D.Api.Services.Inference;
+using ImageTo3D.Api.Services.References;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,6 +28,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             ["Storage:RootPath"] = Path.Combine(Root, "storage"),
             ["Storage:DatabasePath"] = Path.Combine(Root, "test.db"),
             ["Storage:DesignRootPath"] = Path.Combine(Root, "designs"),
+            ["Storage:ReferenceRootPath"] = Path.Combine(Root, "references"),
+            ["Storage:ReferenceCachePath"] = Path.Combine(Root, "reference-cache"),
+            ["ReferenceSearch:RetryDelay"] = "00:00:00.010",
+            ["ReferenceSearch:SearchesPerMinute"] = "1000",
             ["InferenceService:PollInterval"] = "00:00:00.020",
             ["InferenceService:GenerationTimeout"] = "00:00:05",
             ["InferenceService:MaxConsecutivePollFailures"] = "3",
@@ -41,6 +46,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public FakeInferenceClient Inference { get; } = new();
 
+    /// <summary>Answers every outbound reference-search request; nothing reaches the real internet.</summary>
+    public FakeReferenceWeb Web { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -50,6 +58,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IInferenceClient>();
             services.AddSingleton<IInferenceClient>(Inference);
+            services.AddHttpClient(ReferenceHttp.ClientName).ConfigurePrimaryHttpMessageHandler(() => Web);
         });
     }
 

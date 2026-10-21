@@ -1,0 +1,32 @@
+# Dependencies for the SPAR3D engine (separate venv .venv-spar3d: SPAR3D's texture_baker/uv_unwrapper
+# share package names with SF3D's). Python 3.11, CPU wheels; setup-sf3d.ps1 -Engine SPAR3D swaps in
+# CUDA PyTorch when a GPU and nvcc are present. Versions follow third_party/stable-point-aware-3d/requirements.txt.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1+cpu
+torchvision==0.20.1+cpu
+einops==0.7.0
+jaxtyping==0.2.31
+omegaconf==2.3.0
+transformers==4.42.3
+loralib==0.1.2
+clip @ git+https://github.com/openai/CLIP.git@dcba3cb2e2827b402d2701e7e1c7d9fed8a20ef1
+alpha_clip @ git+https://github.com/SunzeY/AlphaCLIP.git
+trimesh==4.4.1
+numpy==1.26.4
+huggingface-hub==0.23.4
+transparent-background==1.3.3
+flet==0.25.2  # transparent-background imports flet's GUI at import time; flet 1.x removed ElevatedButton
+safetensors==0.4.5  # 0.8.x crashes (access violation) with torch 2.5.1 on Windows
+# Build tools for the texture_baker/uv_unwrapper extensions (installed with --no-build-isolation)
+# (ranges, not pins: uv resolves these from the PyTorch index, which carries only some versions)
+setuptools>=69,<80
+wheel
+# Service (shared with the SF3D venv)
+fastapi==0.115.6
+uvicorn==0.34.0
+python-multipart==0.0.20
+opencv-python-headless==4.11.0.86
+scipy==1.17.1
+pillow==12.3.0
+pytest==8.3.4
+httpx==0.28.1

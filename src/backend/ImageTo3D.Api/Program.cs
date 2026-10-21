@@ -4,6 +4,7 @@ using ImageTo3D.Api.Data;
 using ImageTo3D.Api.Services;
 using ImageTo3D.Api.Services.Inference;
 using ImageTo3D.Api.Services.PartDesign;
+using ImageTo3D.Api.Services.References;
 using ImageTo3D.Api.Services.Storage;
 using ImageTo3D.Core.Hosting;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,7 @@ builder.Services.AddOptions<UploadOptions>().Bind(builder.Configuration.GetSecti
 builder.Services.AddOptions<InferenceClientOptions>().Bind(builder.Configuration.GetSection(InferenceClientOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<ModelOutputOptions>().Bind(builder.Configuration.GetSection(ModelOutputOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<PartDesignOptions>().Bind(builder.Configuration.GetSection(PartDesignOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<ReferenceSearchOptions>().Bind(builder.Configuration.GetSection(ReferenceSearchOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 
 builder.Services.AddDbContext<AppDbContext>((sp, options) =>
 {
@@ -36,6 +38,13 @@ builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddScoped<JobService>();
 builder.Services.AddSingleton<IDesignArtifactStore, LocalDesignArtifactStore>();
 builder.Services.AddScoped<PartDesignService>();
+builder.Services.AddSingleton<IReferenceArtifactStore, LocalReferenceArtifactStore>();
+builder.Services.AddSingleton<ReferenceDownloadCache>();
+builder.Services.AddSingleton<ReferenceHttp>();
+builder.Services.AddSingleton<IReferenceSource, WikimediaCommonsSource>();
+builder.Services.AddSingleton<IReferenceSource, OpenverseSource>();
+builder.Services.AddSingleton<IReferenceSource, InternetArchiveSource>();
+builder.Services.AddScoped<ReferenceService>();
 builder.Services.AddHostedService<GenerationWorker>();
 builder.Services.AddHostedService<RetentionCleanupService>();
 
@@ -47,6 +56,21 @@ builder.Services.AddHttpClient<IInferenceClient, InferenceClient>((sp, http) =>
     if (!string.IsNullOrEmpty(o.ApiKey))
         http.DefaultRequestHeaders.Add("X-Internal-Api-Key", o.ApiKey);
 });
+
+// Reference sources: timeouts come from per-call tokens, and redirects are followed by ReferenceHttp
+// itself so every hop is checked against the source's trusted hosts.
+builder.Services.AddHttpClient(ReferenceHttp.ClientName, (sp, http) =>
+    {
+        http.Timeout = Timeout.InfiniteTimeSpan;
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(sp.GetRequiredService<IOptions<ReferenceSearchOptions>>().Value.UserAgent);
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        AutomaticDecompression = System.Net.DecompressionMethods.All,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+    });
 
 builder.Services.AddControllers().AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddApiProblemDetails();

@@ -1151,3 +1151,276 @@ details.card summary {
 .btn--primary .btn__sub {
   color: rgba(255, 255, 255, 0.85);
 }
+
+.export-panel h3 {
+  margin: 0.9rem 0 0.3rem;
+  font-size: 0.95rem;
+}
+
+.export-check {
+  margin-top: 0.5rem;
+}
+
+.export-release {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.export-release input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* ---- Reference search ---- */
+
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ref-new {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+}
+
+.ref-new .btn {
+  justify-self: start;
+}
+
+.ref-input {
+  margin: 0 0 0.75rem;
+}
+
+.ref-input img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.ref-outcomes,
+.ref-links {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ref-links {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.ref-notice {
+  color: var(--success);
+}
+
+.ref-add {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.ref-add .btn {
+  justify-self: start;
+}
+
+.ref-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.ref-filters [aria-selected='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ref-grid {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.ref-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  min-width: 0;
+}
+
+.ref-card--accepted {
+  border-color: var(--success);
+  box-shadow: 0 0 0 1px var(--success);
+}
+
+.ref-card--rejected {
+  opacity: 0.6;
+}
+
+.ref-card__thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  background: #e8ebf0;
+}
+
+.ref-card__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.ref-card__flag {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  font-size: 0.7rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(29, 35, 48, 0.8);
+  color: #fff;
+}
+
+.ref-card__flag--input {
+  left: auto;
+  right: 0.4rem;
+  background: var(--accent);
+}
+
+.ref-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.ref-card__body p {
+  margin: 0;
+}
+
+.ref-card__title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ref-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.ref-card__tags a {
+  color: inherit;
+}
+
+.tag--licence-free {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.tag--licence-restricted {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.tag--licence-unknown {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.tag--decision-accepted {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+
+.tag--decision-rejected {
+  background: var(--muted);
+  border-color: var(--muted);
+  color: #fff;
+}
+
+.ref-card__warning {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.ref-card__warning--warning {
+  color: var(--warning);
+}
+
+.ref-card__attribution {
+  overflow-wrap: anywhere;
+}
+
+.ref-card__more summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.ref-card__more[open] {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ref-card__selects {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.ref-card__selects select {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  min-width: 0;
+}
+
+.ref-card__more .link-danger {
+  justify-self: start;
+}
+
+.ref-card__actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: auto;
+  padding-top: 0.3rem;
+}
+
+.ref-card__actions [aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}

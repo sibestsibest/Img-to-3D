@@ -17,6 +17,14 @@ public sealed class StorageOptions
     [Required]
     public string DesignRootPath { get; set; } = "../../../data/designs";
 
+    /// <summary>Root for reference-search sessions (input photo, thumbnails); never touched by job retention.</summary>
+    [Required]
+    public string ReferenceRootPath { get; set; } = "../../../data/references";
+
+    /// <summary>Disposable downloads shared by all sessions; can be cleared at any time without losing session data.</summary>
+    [Required]
+    public string ReferenceCachePath { get; set; } = "../../../data/reference-cache";
+
     /// <summary>Jobs (rows and files) older than this are deleted.</summary>
     public TimeSpan RetentionPeriod { get; set; } = TimeSpan.FromDays(7);
 
@@ -97,6 +105,82 @@ public sealed class PartDesignOptions
 
     [Range(1, 1000)]
     public int MaxProjectsPerOwner { get; set; } = 100;
+
+    /// <summary>Stored releases per project; each keeps its own zip, so this bounds disk use.</summary>
+    [Range(1, 1000)]
+    public int MaxReleasesPerProject { get; set; } = 50;
+}
+
+/// <summary>
+/// Reference image search. Every source is free and needs no account or key; each can be turned
+/// off. The application works with all of them off or unreachable (manual search links remain).
+/// </summary>
+public sealed class ReferenceSearchOptions
+{
+    public const string SectionName = "ReferenceSearch";
+
+    public bool WikimediaEnabled { get; set; } = true;
+
+    public bool OpenverseEnabled { get; set; } = true;
+
+    public bool InternetArchiveEnabled { get; set; } = true;
+
+    [Required]
+    public Uri WikimediaApiUrl { get; set; } = new("https://commons.wikimedia.org/w/api.php");
+
+    [Required]
+    public Uri OpenverseApiUrl { get; set; } = new("https://api.openverse.org/v1/images/");
+
+    [Required]
+    public Uri InternetArchiveApiUrl { get; set; } = new("https://archive.org/advancedsearch.php");
+
+    /// <summary>
+    /// Sent with every request. Wikimedia's policy asks for a descriptive agent with contact
+    /// details; add yours (e.g. "ImageTo3D/0.4 (you@example.com)") when searching a lot.
+    /// </summary>
+    [Required]
+    [MinLength(8)]
+    public string UserAgent { get; set; } = "ImageTo3D/0.4 (local reference search; .NET HttpClient)";
+
+    /// <summary>Limit per call to one source, retries included.</summary>
+    public TimeSpan SourceTimeout { get; set; } = TimeSpan.FromSeconds(12);
+
+    /// <summary>Extra attempts after a transient failure (network error, 5xx). 429 is never retried.</summary>
+    [Range(0, 3)]
+    public int MaxRetries { get; set; } = 1;
+
+    public TimeSpan RetryDelay { get; set; } = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Results requested from each source (Openverse allows at most 20 without an account).</summary>
+    [Range(1, 50)]
+    public int ResultsPerSource { get; set; } = 20;
+
+    public TimeSpan CacheTtl { get; set; } = TimeSpan.FromDays(7);
+
+    [Range(1, 2000)]
+    public int MaxCandidatesPerSession { get; set; } = 300;
+
+    [Range(1, 1000)]
+    public int MaxSessionsPerOwner { get; set; } = 100;
+
+    [Range(1, 1000)]
+    public int SearchesPerMinute { get; set; } = 10;
+
+    /// <summary>Remote thumbnails larger than this are not downloaded.</summary>
+    [Range(1024, 20L * 1024 * 1024)]
+    public long ThumbnailMaxBytes { get; set; } = 4L * 1024 * 1024;
+
+    [Range(64, 2048)]
+    public int ThumbnailMaxSide { get; set; } = 640;
+
+    public TimeSpan ThumbnailTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    [Range(1, 16)]
+    public int DownloadConcurrency { get; set; } = 6;
+
+    /// <summary>dHash bit difference (of 64) at or below which two pictures count as near-duplicates.</summary>
+    [Range(0, 20)]
+    public int NearDuplicateDistance { get; set; } = 6;
 }
 
 public sealed class ModelOutputOptions

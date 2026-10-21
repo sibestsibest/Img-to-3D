@@ -141,13 +141,86 @@ full project.
 | POST | `/api/part-designs/{id}/undo`, `/redo` | `409 nothing_to_undo` / `nothing_to_redo`. A new edit after undo discards the redo branch |
 | GET | `/api/part-designs/{id}/parts/{partId}/geometry` | GLB in metres, design coordinates; immutable per part ID |
 | GET | `/api/part-designs/{id}/parts/{partId}/drawing/report` | Sheet parts only. Page, outline size, thickness (`specified` or `estimated`), holes (centre from the outline's lower-left corner, diameter when round) and every outline and drawing check. `409 drawing_unsupported` (not a sheet), `422 outline_failed` (not flat, open surface) or `422 part_too_large_for_page` (larger than A3 at 1:1) |
-| GET | `/api/part-designs/{id}/parts/{partId}/drawing?format=svg\|pdf&download=` | 1:1 cutting sheet. SVG: `width`/`height` in mm equal to the `viewBox` (1 unit = 1 mm), groups `cut` (cutting contours only), `annotation`, `reference` (100 mm bar). PDF: vector, page in whole points (A4 = 595 x 842), text as outlines, no embedded fonts. `Cache-Control: no-store`, `nosniff`, restrictive CSP. Same errors as the report, plus `400 invalid_format` |
+| GET | `/api/part-designs/{id}/parts/{partId}/drawing?format=svg\|pdf\|dxf&download=` | 1:1 cutting sheet. SVG: `width`/`height` in mm equal to the `viewBox` (1 unit = 1 mm), groups `cut` (cutting contours only), `annotation`, `reference` (100 mm bar). PDF: vector, page in whole points (A4 = 595 x 842), text as outlines, no embedded fonts. DXF (`image/vnd.dxf`): ASCII R12, `$INSUNITS` 4 (mm), model space with the origin at the outline's lower-left corner; layer `CUT` = closed polylines of the outer contours and holes only, layer `ANNOTATION` = hole labels and a description under the part. The DXF does not depend on a page, so it is also served for parts larger than A3. Title block / DXF text say `Draft`. `Cache-Control: no-store`, `nosniff`, restrictive CSP. Same errors as the report, plus `400 invalid_format` |
+| GET | `/api/part-designs/{id}/parts/{partId}/stl` | Binary STL of the part in millimetres (design coordinates), any category. `422 stl_failed` for unusable geometry |
+| GET | `/api/part-designs/{id}/export/bom` | Bill of materials, CSV (UTF-8 with BOM, CRLF, invariant numbers), one row per active part in tree order: item, part ID, name, category, review and validation status, quantity, material, method, every manufacturing value, estimated and confirmed dimensions, stock details, issue codes, notes. Text cells starting with `= + - @` are prefixed with `'` |
+| GET | `/api/part-designs/{id}/export/cut-list` | Rod and tube cuts, CSV: one row per distinct cut (same category, material, section, length, angle, fit allowance) with summed quantity, `total_length_mm` and the part names; rows of the same stock share a `stock_group` (`S1`, `S2`…), longest cut first. A missing diameter or cut length falls back to the model estimate and is marked `estimated` in `size_status` / `length_status`. No stock-length nesting |
+| GET | `/api/part-designs/{id}/export/manifest` | Builds a draft package and returns only its `manifest.json` (see below) — a check before downloading or releasing |
+| GET | `/api/part-designs/{id}/export/package` | Draft package (zip), built now and not stored. `409 nothing_to_export` (no active part) or `409 export_blocked` (a part has a validation error, e.g. tube inner ≥ outer) |
+| GET | `/api/part-designs/{id}/releases` | Stored releases, newest first: `{ id, revision, note, sizeBytes, sha256, historySequence, partCount, fileCount, warningCount, createdAt }` |
+| POST | `/api/part-designs/{id}/releases` | JSON `{ note? }` (≤ 500 chars). Builds the next numbered package (`revision` 1, 2, 3… per project), stores the zip and returns `201` with the release. Drawings and DXFs inside say `Rev N`. Same `409` errors as the draft package, plus `409 too_many_releases` (`PartDesign:MaxReleasesPerProject`, default 50) and `409 release_conflict` (concurrent release; retry) |
+| GET | `/api/part-designs/{id}/releases/{revision}/package` | The stored zip, byte for byte (its SHA-256 equals the release's `sha256`), whatever was edited or undone since. `404` for an unknown revision |
 
 Part fields worth knowing: `category` ∈ `sheet, rod, tube, stock_part, custom_3d, needs_review`
 (the analysis never suggests `stock_part`, and uses `needs_review` when its confidence is below
 0.5); `reviewStatus` ∈ `needs_review, user_confirmed`; `estimated.status` is always `estimated`;
 `confirmed.status` is `user_confirmed` once a measured dimension is entered; `validation.status` ∈
 `valid, warning, invalid` with `issues[]` of `{ code, severity, message, source }`.
+
+Export package layout (draft and release are identical apart from `kind`, `revision` and the
+revision label on drawings):
+
+```
+manifest.json            schemaVersion 1; kind draft|release; revision; note; createdAt (UTC); units "mm";
+                         project { id, name, sourceJobId, sourceFileName, mmPerModelUnit, scaleStatus,
+                         historySequence, updatedAt }; parts[] { item, id, name, category, reviewStatus,
+                         validationStatus, quantity, files[] }; files[] { path, kind, partId, bytes, sha256 };
+                         warnings[] { code, severity, message, partId }
+README.txt               contents and printing instructions
+bom.csv, cut-list.csv    as the endpoints above
+drawings/NN-<name>-<id8>.pdf|svg|dxf   sheet parts
+stl/NN-<name>-<id8>.stl                every part, millimetres
+```
+
+`NN` is the item number (tree order). Parts with warnings are included and each warning is listed
+(including `not_reviewed` for parts the user has not confirmed). A sheet part whose outline cannot
+be extracted gets no drawing (`outline_failed`), and one larger than A3 gets only the DXF
+(`part_too_large_for_page`).
+
+## Reference search (`/api/references`)
+
+A session collects reference pictures of one object: an optional input photo, the search query and
+the candidates found or added. Sessions have their own storage (`data/references/<session>/`), are
+not affected by job retention or deletion, and are isolated per owner like jobs (others get `404`).
+Every mutating call returns the full session.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/references/sources` | `[{ id, name, description, enabled, access: "free_no_account" }]`: `wikimedia`, `openverse`, `internet_archive` |
+| POST | `/api/references` | Multipart, all optional: `image` (input photo, upload limits apply) **or** `sourceJobId` (copies the job's upright photo), `name`, `query`. `201`; `400 ambiguous_input` / `invalid_image`, `404 source_not_found`, `409 too_many_sessions`, `410 artifact_missing` |
+| GET | `/api/references?page&pageSize` | Summaries with candidate and accepted counts |
+| GET | `/api/references/{id}` | Session |
+| PUT | `/api/references/{id}` | `{ name, query? }` |
+| DELETE | `/api/references/{id}` | `204`; removes rows and files, never the source job |
+| POST | `/api/references/{id}/search` | JSON `{ query?, sources? }` (query replaces the session's; sources default to all enabled). Always `200` for an existing session, each source reporting in `lastSearch`; `400 query_required` (under 2 characters) / `unknown_source`, `429 rate_limited` (`ReferenceSearch:SearchesPerMinute` per browser) |
+| POST | `/api/references/{id}/candidates` | Multipart `image` plus optional `title`, `author`, `pageUrl`, `license` (one of `unknown, cc0, public_domain, cc-by, cc-by-sa, cc-by-nd, cc-by-nc, cc-by-nc-sa, cc-by-nc-nd, gfdl, own_work`), `licenseUrl`. Added as `accepted`. `400 invalid_image` / `invalid_license` / `invalid_page_url` / `invalid_license_url`, `409 already_added` / `session_full` |
+| PUT | `/api/references/{id}/candidates/{candidateId}` | `{ decision: pending\|accepted\|rejected, imageKind?: unknown\|photo\|render\|drawing, relation?: unknown\|same_object\|variant\|similar_different, note? }` |
+| DELETE | `/api/references/{id}/candidates/{candidateId}` | Removes the candidate and its files; duplicates are regrouped |
+| GET | `/api/references/{id}/input?size=thumbnail\|full` | Input photo: JPEG preview or upright PNG |
+| GET | `/api/references/{id}/candidates/{candidateId}/thumbnail` | Stored JPEG preview (longest side ≤ `ThumbnailMaxSide`), `404` when none |
+| DELETE | `/api/references/cache` | Clears the shared, disposable caches: `{ searchEntries, files, bytes }`. Sessions keep their pictures |
+
+Session: `{ id, name, query, sourceJobId, hasInputImage, inputWidth, inputHeight, createdAt,
+updatedAt, lastSearchedAt, lastSearch[], manualLinks[], candidates[] }`.
+
+`lastSearch[]`: `{ source, name, status, hits, added, fromCache, message }` with `status` ∈ `ok,
+empty, failed, timeout, rate_limited, disabled`. Failures are not cached; results (including empty
+ones) are cached per source and normalised query for `ReferenceSearch:CacheTtl`.
+
+`manualLinks[]`: `{ name, url, kind }` (`kind` ∈ `images, reference, shop, models`), browser search
+links for the current query. Nothing is fetched from them.
+
+Candidate: `{ id, origin: search|manual, source, sourceName, title, pageUrl, imageUrl, author,
+license { code, label, url, raw, commercialUse, derivatives, attributionRequired }, attribution,
+query, retrievedAt, downloadStatus: downloaded|failed|skipped, downloadError, hasThumbnail,
+thumbnailWidth, thumbnailHeight, width, height, duplicateOfId, duplicateKind: exact|near|null,
+matchesInput, decision, imageKind, relation, note, warnings[] }`. `pageUrl` is a web page, `imageUrl`
+a direct image address (null when the source gives none). Licence permissions are `null` when the
+licence is unknown. `warnings[]` are `{ code, severity, message, source }` with codes
+`licence_unknown` (personal reference only), `non_commercial`, `no_derivatives`, `preview_failed`,
+`duplicate`, `matches_input`. Previews are only downloaded over HTTPS from the source's own image
+hosts (`skipped` otherwise); a duplicate is a copy of the same picture, not another photo of the
+same object.
 
 ## Internal inference API (`http://127.0.0.1:5090`)
 
