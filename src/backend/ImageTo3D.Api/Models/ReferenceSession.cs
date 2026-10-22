@@ -54,6 +54,31 @@ public sealed class ReferenceSession
     /// <summary>Outcome of the last 3D model search per source (JSON array).</summary>
     public string LastModelSearchJson { get; set; } = "[]";
 
+    // ---- Reconstruction decision (see ReconstructionPlanner); null until a route is started ----
+
+    /// <summary>Route the user started (reuse_existing_model, hybrid_reconstruction, ...).</summary>
+    public string? ReconstructionRoute { get; set; }
+
+    /// <summary>Last known state; for generation routes it follows the job and is kept when the job is deleted by retention.</summary>
+    public string? ReconstructionState { get; set; }
+
+    public DateTime? ReconstructionStartedAt { get; set; }
+
+    /// <summary>Generation job started for this session (no foreign key: jobs are deleted by retention).</summary>
+    public Guid? ReconstructionJobId { get; set; }
+
+    /// <summary>Part design created from an accepted model, or the empty one for manual geometry.</summary>
+    public Guid? ReconstructionDesignId { get; set; }
+
+    /// <summary>Model candidate that was reused.</summary>
+    public Guid? ReconstructionModelId { get; set; }
+
+    /// <summary>Reference candidates sent as extra photos (JSON array of IDs).</summary>
+    public string? ReconstructionExtraIdsJson { get; set; }
+
+    /// <summary>Why the generation failed or was cancelled, copied from the job.</summary>
+    public string? ReconstructionMessage { get; set; }
+
     public List<ReferenceCandidate> Candidates { get; set; } = [];
 
     public List<ModelCandidate> Models { get; set; } = [];

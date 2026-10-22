@@ -230,3 +230,47 @@ export interface ModelUpload {
   pageUrl?: string
   license?: string
 }
+
+export type ReconstructionRoute =
+  | 'reuse_existing_model'
+  | 'multi_view_reconstruction'
+  | 'hybrid_reconstruction'
+  | 'single_image_reconstruction'
+  | 'manual_geometry_required'
+
+export type ReconstructionState = 'reference_search' | 'model_candidate_review' | ReconstructionRoute | 'completed' | 'failed' | 'cancelled'
+
+export interface RouteReason {
+  code: string
+  /** `blocker`: the route cannot start because of it. */
+  severity: 'info' | 'warning' | 'blocker'
+  message: string
+}
+
+export interface RouteOption {
+  route: ReconstructionRoute
+  /** `unsupported`: no installed engine can do it; `unavailable`: not with what the search has now. */
+  availability: 'available' | 'unavailable' | 'unsupported'
+  recommended: boolean
+  reasons: RouteReason[]
+  modelId: string | null
+  extraPhotos: number
+}
+
+/** GET/POST /api/references/{id}/reconstruction: routes in preference order and what was started. */
+export interface Reconstruction {
+  state: ReconstructionState
+  route: ReconstructionRoute | null
+  startedAt: string | null
+  jobId: string | null
+  jobStatus: 'Pending' | 'Processing' | 'Succeeded' | 'Failed' | 'Cancelled' | null
+  designId: string | null
+  modelId: string | null
+  extraReferenceIds: string[]
+  message: string | null
+  recommended: ReconstructionRoute
+  routes: RouteOption[]
+  notes: RouteReason[]
+  engine: string | null
+  engineReachable: boolean
+}

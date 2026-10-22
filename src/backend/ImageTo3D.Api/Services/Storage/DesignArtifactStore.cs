@@ -9,6 +9,9 @@ public static class DesignArtifactNames
     /// <summary>Byte-for-byte copy of the generation job's raw mesh (model units), never modified.</summary>
     public const string SourceMesh = "source.glb";
 
+    /// <summary>Byte-for-byte copy of a reused STL model, never modified.</summary>
+    public const string SourceStl = "source.stl";
+
     public static string PartGeometry(Guid partId) => $"p{partId:N}.glb";
 
     /// <summary>Zip of a release, written once and never modified.</summary>

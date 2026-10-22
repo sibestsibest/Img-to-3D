@@ -26,6 +26,26 @@ public sealed class PartDesignsController(PartDesignService designs) : Controlle
         return CreatedAtAction(nameof(Get), new { id = project.Id }, project);
     }
 
+    /// <summary>Create an empty project (no source mesh) for parts built from stock shapes.</summary>
+    [HttpPost("blank")]
+    [Consumes("application/json")]
+    [ProducesResponseType<PartDesignProjectDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CreateBlank([FromBody] CreateBlankPartDesignRequest request, CancellationToken cancellationToken)
+    {
+        var project = await designs.CreateBlankAsync(request, cancellationToken);
+        return CreatedAtAction(nameof(Get), new { id = project.Id }, project);
+    }
+
+    /// <summary>Add a plate, block, rod or tube with exact millimetre sizes (reversible with undo).</summary>
+    [HttpPost("{id:guid}/parts/primitive")]
+    [Consumes("application/json")]
+    [ProducesResponseType<PartDesignProjectDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public Task<PartDesignProjectDto> AddPrimitive(Guid id, [FromBody] AddPrimitiveRequest request, CancellationToken cancellationToken) =>
+        designs.AddPrimitiveAsync(id, request, cancellationToken);
+
     [HttpGet]
     public Task<PagedResult<PartDesignSummaryDto>> List([FromQuery] ListJobsQuery query, CancellationToken cancellationToken) =>
         designs.ListAsync(query.Page, query.PageSize, cancellationToken);

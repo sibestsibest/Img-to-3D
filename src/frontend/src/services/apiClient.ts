@@ -1,5 +1,6 @@
 import type { ExtraPhoto, Job, PagedResult, ProblemDetails, ScaleAxis } from '../types/api'
 import type {
+  AddPrimitiveRequest,
   DesignRelease,
   DrawingFormat,
   DrawingReport,
@@ -14,6 +15,8 @@ import type {
   ClearCacheResult,
   ManualPicture,
   ModelUpload,
+  Reconstruction,
+  ReconstructionRoute,
   ReferenceCapabilities,
   ReferenceDecision,
   ReferenceSession,
@@ -134,6 +137,9 @@ const json = (method: string, body: unknown): RequestInit => ({
 
 export const designApi = {
   create: (sourceJobId: string, name?: string) => request<PartDesignProject>('/part-designs', json('POST', { sourceJobId, name })),
+  /** An empty project for parts built from stock shapes. */
+  createBlank: (name?: string) => request<PartDesignProject>('/part-designs/blank', json('POST', { name })),
+  addPrimitive: (id: string, body: AddPrimitiveRequest) => request<PartDesignProject>(designPath(id, '/parts/primitive'), json('POST', body)),
   list: (page = 1, pageSize = 50) => request<PagedResult<PartDesignSummary>>(`/part-designs?page=${page}&pageSize=${pageSize}`),
   get: (id: string, signal?: AbortSignal) => request<PartDesignProject>(designPath(id), { signal }),
   remove: (id: string) => request<void>(designPath(id), { method: 'DELETE' }),
@@ -202,6 +208,10 @@ export const referenceApi = {
   updateModel: (id: string, modelId: string, decision: ReferenceDecision, note?: string | null) =>
     request<ReferenceSession>(referencePath(id, `/models/${encodeURIComponent(modelId)}`), json('PUT', { decision, note })),
   removeModel: (id: string, modelId: string) => request<ReferenceSession>(referencePath(id, `/models/${encodeURIComponent(modelId)}`), { method: 'DELETE' }),
+  /** Which ways to get geometry are possible, the recommendation, and the state of what was started. */
+  reconstruction: (id: string, signal?: AbortSignal) => request<Reconstruction>(referencePath(id, '/reconstruction'), { signal }),
+  startReconstruction: (id: string, route: ReconstructionRoute, options: { modelId?: string; name?: string } = {}) =>
+    request<Reconstruction>(referencePath(id, '/reconstruction'), json('POST', { route, ...options })),
 }
 
 /** Relative URLs only: the browser never learns internal service addresses or file paths. */

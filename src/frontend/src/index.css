@@ -1527,3 +1527,81 @@ details.card summary {
 .ref-model-upload[open] .ref-add {
   margin-top: 0.5rem;
 }
+
+.status-pill--neutral {
+  background: var(--muted);
+}
+
+/* Reconstruction decision (reference session) */
+.recon__current {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.7rem;
+}
+
+.recon__message {
+  margin: 0.3rem 0 0;
+  color: var(--danger);
+}
+
+.recon__links {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.recon__routes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.recon__route {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+}
+
+.recon__route p {
+  margin: 0.2rem 0;
+}
+
+.recon__route--recommended {
+  border-color: var(--accent);
+}
+
+.recon__route--unavailable,
+.recon__route--unsupported {
+  opacity: 0.75;
+}
+
+.recon__route-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.recon__reasons,
+.recon__notes {
+  margin: 0.2rem 0 0.4rem;
+  padding-left: 1.1rem;
+}
+
+.recon__reason--warning {
+  color: var(--warning);
+}
+
+.recon__reason--blocker {
+  color: var(--muted);
+}
+
+/* Stock-shape form (part designer) */
+.primitive-form__dims {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.5rem 0.8rem;
+}

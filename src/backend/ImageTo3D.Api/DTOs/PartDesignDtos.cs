@@ -78,11 +78,25 @@ public sealed record DesignPartDto(
 
 public sealed record OperationDto(int Sequence, string Kind, string Summary, bool Undone, DateTime CreatedAt);
 
+/// <summary>
+/// Provenance of a project's source. <c>Kind</c>: <c>generation_job</c>, <c>reference_model</c>
+/// (an accepted existing model, with its licence and attribution) or <c>none</c> (built by hand).
+/// </summary>
+public sealed record DesignSourceDto(
+    string Kind,
+    Guid? JobId,
+    Guid? ReferenceSessionId,
+    Guid? ModelCandidateId,
+    string FileName,
+    string? License,
+    string? Attribution);
+
 public sealed record PartDesignProjectDto(
     Guid Id,
     string Name,
-    Guid SourceJobId,
+    Guid? SourceJobId,
     string SourceFileName,
+    DesignSourceDto Source,
     double MmPerModelUnit,
     string ScaleStatus,
     string CoordinateSystem,
@@ -97,7 +111,7 @@ public sealed record PartDesignProjectDto(
     bool CanRedo,
     string Units = "mm");
 
-public sealed record PartDesignSummaryDto(Guid Id, string Name, Guid SourceJobId, string SourceFileName, int PartCount, DateTime CreatedAt, DateTime UpdatedAt);
+public sealed record PartDesignSummaryDto(Guid Id, string Name, Guid? SourceJobId, string SourceKind, string SourceFileName, int PartCount, DateTime CreatedAt, DateTime UpdatedAt);
 
 public sealed class CreatePartDesignRequest
 {
@@ -106,6 +120,63 @@ public sealed class CreatePartDesignRequest
 
     [StringLength(100, MinimumLength = 1)]
     public string? Name { get; set; }
+}
+
+/// <summary>An empty project, for parts built from stock shapes.</summary>
+public sealed class CreateBlankPartDesignRequest
+{
+    [StringLength(100)]
+    public string? Name { get; set; }
+}
+
+/// <summary>
+/// A stock shape in design millimetres (Y-up). <c>Kind</c>: <c>plate</c> (length, width,
+/// thickness; axis = thickness direction, default y), <c>box</c> (length X, height Y, width Z),
+/// <c>rod</c> (diameter, length; axis = length direction, default x) or <c>tube</c> (outer and
+/// inner diameter, length). <c>Center</c> is the centre of the shape, default the origin.
+/// </summary>
+public sealed class AddPrimitiveRequest
+{
+    [Required]
+    [RegularExpression("^(plate|box|rod|tube)$", ErrorMessage = "Kind must be 'plate', 'box', 'rod' or 'tube'.")]
+    public string? Kind { get; set; }
+
+    [RegularExpression("^mm$", ErrorMessage = "Units must be 'mm'.")]
+    public string Units { get; set; } = "mm";
+
+    [StringLength(100)]
+    public string? Name { get; set; }
+
+    [StringLength(100)]
+    public string? Material { get; set; }
+
+    [Range(0.05, 5000.0)]
+    public double? LengthMm { get; set; }
+
+    [Range(0.05, 5000.0)]
+    public double? WidthMm { get; set; }
+
+    [Range(0.05, 5000.0)]
+    public double? HeightMm { get; set; }
+
+    [Range(0.05, 5000.0)]
+    public double? ThicknessMm { get; set; }
+
+    [Range(0.05, 5000.0)]
+    public double? DiameterMm { get; set; }
+
+    [Range(0.05, 5000.0)]
+    public double? OuterDiameterMm { get; set; }
+
+    [Range(0.05, 5000.0)]
+    public double? InnerDiameterMm { get; set; }
+
+    [RegularExpression("^[xyz]$", ErrorMessage = "Axis must be 'x', 'y' or 'z'.")]
+    public string? Axis { get; set; }
+
+    [MinLength(3)]
+    [MaxLength(3)]
+    public double[]? Center { get; set; }
 }
 
 public sealed class UpdatePartDesignRequest
@@ -257,8 +328,9 @@ public sealed record ManifestWarningDto(string Code, string Severity, string Mes
 public sealed record ManifestProjectDto(
     Guid Id,
     string Name,
-    Guid SourceJobId,
+    Guid? SourceJobId,
     string SourceFileName,
+    DesignSourceDto Source,
     double MmPerModelUnit,
     string ScaleStatus,
     int HistorySequence,

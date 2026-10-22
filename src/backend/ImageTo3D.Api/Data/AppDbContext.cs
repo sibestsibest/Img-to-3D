@@ -55,6 +55,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         project.Property(p => p.OwnerKeyHash).HasMaxLength(64).IsRequired();
         project.Property(p => p.Name).HasMaxLength(100).IsRequired();
         project.Property(p => p.SourceFileName).HasMaxLength(128).IsRequired();
+        project.Property(p => p.SourceKind).HasMaxLength(24).IsRequired();
+        project.Property(p => p.SourceLicense).HasMaxLength(32);
+        project.Property(p => p.SourceAttribution).HasMaxLength(700);
         project.HasIndex(p => new { p.OwnerKeyHash, p.UpdatedAt });
         project.HasMany(p => p.Parts).WithOne().HasForeignKey(p => p.ProjectId).OnDelete(DeleteBehavior.Cascade);
         project.HasMany(p => p.Operations).WithOne().HasForeignKey(o => o.ProjectId).OnDelete(DeleteBehavior.Cascade);
@@ -105,6 +108,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         session.Property(s => s.RankingMode).HasMaxLength(16);
         session.Property(s => s.RankingNote).HasMaxLength(300);
         session.Property(s => s.InputViewpoint).HasMaxLength(16);
+        session.Property(s => s.ReconstructionRoute).HasMaxLength(32);
+        session.Property(s => s.ReconstructionState).HasMaxLength(32);
+        session.Property(s => s.ReconstructionExtraIdsJson).HasMaxLength(500);
+        session.Property(s => s.ReconstructionMessage).HasMaxLength(500);
         session.HasMany(s => s.Candidates).WithOne().HasForeignKey(c => c.SessionId).OnDelete(DeleteBehavior.Cascade);
         session.HasMany(s => s.Models).WithOne().HasForeignKey(m => m.SessionId).OnDelete(DeleteBehavior.Cascade);
 

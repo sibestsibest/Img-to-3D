@@ -519,12 +519,31 @@ namespace ImageTo3D.Api.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SourceAttribution")
+                        .HasMaxLength(700)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SourceFileName")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("SourceJobId")
+                    b.Property<Guid?>("SourceJobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceKind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceLicense")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SourceModelCandidateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SourceReferenceSessionId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -856,6 +875,34 @@ namespace ImageTo3D.Api.Data.Migrations
 
                     b.Property<string>("RankingNote")
                         .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReconstructionDesignId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReconstructionExtraIdsJson")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReconstructionJobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReconstructionMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReconstructionModelId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReconstructionRoute")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReconstructionStartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReconstructionState")
+                        .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("SourceJobId")

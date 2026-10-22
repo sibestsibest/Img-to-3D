@@ -14,8 +14,33 @@ namespace ImageTo3D.Api.Controllers;
 [ApiController]
 [Route("api/references")]
 [Produces("application/json")]
-public sealed class ReferencesController(ReferenceService references) : ControllerBase
+public sealed class ReferencesController(ReferenceService references, ReconstructionService reconstruction) : ControllerBase
 {
+    /// <summary>
+    /// How geometry can be obtained for this search, in preference order (reuse an accepted model,
+    /// multi-view [unsupported], hybrid, single image, manual), the recommendation and the state of
+    /// anything started. A started generation's state follows its job.
+    /// </summary>
+    [HttpGet("{id:guid}/reconstruction")]
+    [ProducesResponseType<ReconstructionDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public Task<ReconstructionDto> Reconstruction(Guid id, CancellationToken cancellationToken) => reconstruction.GetAsync(id, cancellationToken);
+
+    /// <summary>
+    /// Start a route: reuse creates a part design from the accepted model (no inference), manual
+    /// creates an empty part design, single image and hybrid start a generation job from the
+    /// session's photos. Refused (409) when the route is unavailable or a generation is still running.
+    /// </summary>
+    [HttpPost("{id:guid}/reconstruction")]
+    [EnableRateLimiting(RateLimitPolicies.Uploads)]
+    [Consumes("application/json")]
+    [ProducesResponseType<ReconstructionDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
+    public Task<ReconstructionDto> StartReconstruction(Guid id, [FromBody] StartReconstructionRequest request, CancellationToken cancellationToken) =>
+        reconstruction.StartAsync(id, request, cancellationToken);
+
     /// <summary>The sources the server can search and whether each is enabled. None needs an account or key.</summary>
     [HttpGet("sources")]
     public IReadOnlyList<ReferenceSourceDto> Sources() => references.ListSources();

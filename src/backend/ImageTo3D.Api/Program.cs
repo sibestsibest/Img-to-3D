@@ -50,6 +50,7 @@ builder.Services.AddSingleton<IReferenceSource, InternetArchiveSource>();
 builder.Services.AddSingleton<SketchfabSource>();
 builder.Services.AddSingleton<IImageEmbedder, ClipEmbedder>();
 builder.Services.AddScoped<ReferenceService>();
+builder.Services.AddScoped<ReconstructionService>();
 builder.Services.AddHostedService<GenerationWorker>();
 builder.Services.AddHostedService<RetentionCleanupService>();
 

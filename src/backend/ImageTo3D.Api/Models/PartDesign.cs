@@ -1,7 +1,8 @@
 namespace ImageTo3D.Api.Models;
 
 /// <summary>
-/// A part-design project derived from a generated model. The source mesh is copied into the
+/// A part-design project derived from a generated model, from an existing model accepted in a
+/// reference search, or started empty for hand-built geometry. The source mesh is copied into the
 /// project's own storage when the project is created, so it survives job retention and is never
 /// modified; parts are separate derived geometry.
 /// </summary>
@@ -14,12 +15,29 @@ public sealed class PartDesignProject
 
     public required string Name { get; set; }
 
-    /// <summary>Generation job the source was copied from (provenance only; the job may since have been deleted).</summary>
-    public Guid SourceJobId { get; set; }
+    /// <summary>Where the source came from (see <see cref="DesignSourceKinds"/>).</summary>
+    public string SourceKind { get; set; } = DesignSourceKinds.GenerationJob;
 
+    /// <summary>Generation job the source was copied from (provenance only; the job may since have been deleted).</summary>
+    public Guid? SourceJobId { get; set; }
+
+    /// <summary>Reference session and model candidate of a reused model (provenance only).</summary>
+    public Guid? SourceReferenceSessionId { get; set; }
+
+    public Guid? SourceModelCandidateId { get; set; }
+
+    /// <summary>Licence code and attribution of a reused model, kept with the project for the export package.</summary>
+    public string? SourceLicense { get; set; }
+
+    public string? SourceAttribution { get; set; }
+
+    /// <summary>Empty for projects without a source.</summary>
     public required string SourceFileName { get; set; }
 
-    /// <summary>Scale the source job had when the project was created; part geometry is in millimetres at this scale.</summary>
+    /// <summary>
+    /// Millimetres per source unit when the project was created; part geometry is in millimetres at
+    /// this scale. Job: the job's scale. GLB: 1000 (metres). STL: 1 (millimetres assumed). Empty: 1.
+    /// </summary>
     public double MmPerModelUnit { get; set; }
 
     public double FitAllowanceMinMm { get; set; } = -0.5;
@@ -49,8 +67,22 @@ public enum DesignPartState
     Superseded,
 }
 
+public static class DesignSourceKinds
+{
+    public const string GenerationJob = "generation_job";
+
+    /// <summary>An uploaded GLB/STL accepted in a reference search.</summary>
+    public const string ReferenceModel = "reference_model";
+
+    /// <summary>No source mesh: parts are built from stock shapes.</summary>
+    public const string None = "none";
+}
+
 public static class PartOrigins
 {
+    /// <summary>Built from a stock shape with exact sizes (plate, block, rod, tube).</summary>
+    public const string Primitive = "primitive";
+
     public const string Node = "node";
     public const string Component = "component";
     public const string Fragments = "fragments";

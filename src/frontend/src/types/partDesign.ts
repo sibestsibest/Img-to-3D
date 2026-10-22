@@ -95,11 +95,25 @@ export interface Operation {
   createdAt: string
 }
 
+export type DesignSourceKind = 'generation_job' | 'reference_model' | 'none'
+
+/** Where a project's source came from; a reused model keeps its licence and attribution. */
+export interface DesignSource {
+  kind: DesignSourceKind
+  jobId: string | null
+  referenceSessionId: string | null
+  modelCandidateId: string | null
+  fileName: string
+  license: string | null
+  attribution: string | null
+}
+
 export interface PartDesignProject {
   id: string
   name: string
-  sourceJobId: string
+  sourceJobId: string | null
   sourceFileName: string
+  source: DesignSource
   mmPerModelUnit: number
   scaleStatus: 'estimated'
   coordinateSystem: string
@@ -118,7 +132,8 @@ export interface PartDesignProject {
 export interface PartDesignSummary {
   id: string
   name: string
-  sourceJobId: string
+  sourceJobId: string | null
+  sourceKind: DesignSourceKind
   sourceFileName: string
   partCount: number
   createdAt: string
@@ -175,6 +190,25 @@ export interface DrawingReport {
   issues: Issue[]
   formats: DrawingFormat[]
   units: 'mm'
+}
+
+export type PrimitiveKind = 'plate' | 'box' | 'rod' | 'tube'
+
+/** Body of POST /api/part-designs/{id}/parts/primitive; sizes in mm, fields used depend on the kind. */
+export interface AddPrimitiveRequest {
+  kind: PrimitiveKind
+  units: 'mm'
+  name?: string
+  material?: string
+  lengthMm?: number
+  widthMm?: number
+  heightMm?: number
+  thicknessMm?: number
+  diameterMm?: number
+  outerDiameterMm?: number
+  innerDiameterMm?: number
+  axis?: 'x' | 'y' | 'z'
+  center?: [number, number, number]
 }
 
 export interface SplitPlane {

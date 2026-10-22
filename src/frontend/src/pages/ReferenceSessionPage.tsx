@@ -3,6 +3,7 @@ import { ErrorBanner } from '../components/ErrorBanner'
 import { AddPictureForm } from '../components/references/AddPictureForm'
 import { CandidateCard } from '../components/references/CandidateCard'
 import { ModelCandidates } from '../components/references/ModelCandidates'
+import { ReconstructionPanel } from '../components/references/ReconstructionPanel'
 import { referenceApi, urls } from '../services/apiClient'
 import {
   allSourcesUnavailable,
@@ -27,7 +28,17 @@ const FILTERS: { value: CandidateFilter; label: string }[] = [
   { value: 'rejected', label: 'Rejected' },
 ]
 
-export function ReferenceSessionPage({ id, onBack }: { id: string; onBack: () => void }) {
+export function ReferenceSessionPage({
+  id,
+  onBack,
+  onOpenDesign,
+  onOpenJob,
+}: {
+  id: string
+  onBack: () => void
+  onOpenDesign: (designId: string) => void
+  onOpenJob: (jobId: string) => void
+}) {
   const [session, setSession] = useState<ReferenceSession | null>(null)
   const [sources, setSources] = useState<ReferenceSource[]>([])
   const [selected, setSelected] = useState<string[] | null>(null)
@@ -312,6 +323,8 @@ export function ReferenceSessionPage({ id, onBack }: { id: string; onBack: () =>
           onDecide={(m, decision) => void run(() => referenceApi.updateModel(id, m.id, decision, m.note), 'Update failed.')}
           onRemove={(m) => void run(() => referenceApi.removeModel(id, m.id), 'Remove failed.')}
         />
+
+        <ReconstructionPanel sessionId={session.id} version={session.updatedAt} onOpenDesign={onOpenDesign} onOpenJob={onOpenJob} />
       </main>
     </div>
   )

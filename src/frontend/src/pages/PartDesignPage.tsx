@@ -5,11 +5,12 @@ import { IssueList, PartPropertiesPanel } from '../components/partdesign/PartPro
 import { PartDrawingPanel } from '../components/partdesign/PartDrawingPanel'
 import { PartTree } from '../components/partdesign/PartTree'
 import { PartViewport, type PlanePreview } from '../components/partdesign/PartViewport'
+import { PrimitivePanel } from '../components/partdesign/PrimitivePanel'
 import { SplitPanel } from '../components/partdesign/SplitPanel'
 import { usePartDesign } from '../hooks/usePartDesign'
 import { designApi } from '../services/apiClient'
 import { activeParts, buildTree, initialViewState, isVisible, planeFor, viewReducer, type Axis } from '../services/partDesignState'
-import type { UpdatePartRequest } from '../types/partDesign'
+import type { AddPrimitiveRequest, UpdatePartRequest } from '../types/partDesign'
 
 export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void }) {
   const { project, loadError, actionError, clearActionError, busy, run } = usePartDesign(id)
@@ -43,6 +44,14 @@ export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void 
     if (selected) await run(() => designApi.updatePart(project.id, selected.id, request))
   }
 
+  const addPrimitive = async (request: AddPrimitiveRequest) => {
+    const before = new Set(project.parts.map((p) => p.id))
+    const next = await run(() => designApi.addPrimitive(project.id, request))
+    const added = next?.parts.find((p) => !before.has(p.id))
+    if (added) dispatch({ type: 'select', id: added.id })
+    return next !== null
+  }
+
   const split = async (axis: Axis, offsetMm: number, allowOpen: boolean) => {
     if (!selected) return
     const parentId = selected.id
@@ -62,8 +71,17 @@ export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void 
             </button>
           </div>
           <p className="muted small">
-            From <strong>{project.sourceFileName}</strong>. Units: mm. Scale: <span className="tag tag--needs_review">estimated</span>
+            {project.source.kind === 'none' ? (
+              'No source model: built from stock shapes.'
+            ) : (
+              <>
+                From <strong>{project.sourceFileName}</strong>
+                {project.source.kind === 'reference_model' && ' (reused existing model)'}.
+              </>
+            )}{' '}
+            Units: mm. Scale: <span className="tag tag--needs_review">estimated</span>
           </p>
+          {project.source.attribution && <p className="muted small">Source: {project.source.attribution}</p>}
           <IssueList issues={project.issues} empty="" />
           <div className="part-props__actions">
             <button type="button" className="btn btn--small" disabled={busy || !project.canUndo} onClick={() => run(() => designApi.undo(project.id))}>
@@ -85,6 +103,8 @@ export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void 
         />
 
         {selected && <SplitPanel projectId={project.id} part={selected} busy={busy} onPlaneChange={onPlaneChange} onSplit={split} />}
+
+        <PrimitivePanel busy={busy} defaultOpen={project.source.kind === 'none'} onAdd={addPrimitive} />
 
         <ExportPanel projectId={project.id} parts={parts} version={project.updatedAt} />
 
@@ -125,8 +145,9 @@ export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void 
           </div>
         )}
         <footer className="disclaimer">
-          <strong>Estimates, not measurements.</strong> Categories are suggestions from simple shape rules, and every dimension comes from
-          an AI-generated model at an assumed scale. Confirm measurements on the real part before cutting styrene.
+          <strong>Estimates, not measurements.</strong> Categories are suggestions from simple shape rules, and dimensions measured on a
+          model (AI-generated or reused) are at an assumed scale; only stock shapes have the sizes you entered. Confirm measurements on the
+          real part before cutting styrene.
         </footer>
       </main>
     </div>
