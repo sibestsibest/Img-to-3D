@@ -1424,3 +1424,184 @@ details.card summary {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ---- Reference ranking and model candidates ---- */
+
+.ref-card__rank {
+  position: absolute;
+  bottom: 0.4rem;
+  left: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.ref-rank {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.ref-rank__bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.ref-rank__bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.tag--uncertain {
+  font-style: italic;
+}
+
+.ref-reasons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ref-reasons__item::before {
+  display: inline-block;
+  width: 1rem;
+  font-weight: 700;
+}
+
+.ref-reasons__item--plus::before {
+  content: '+';
+  color: var(--success);
+}
+
+.ref-reasons__item--minus::before {
+  content: '−';
+  color: var(--danger);
+}
+
+.ref-reasons__item--info::before {
+  content: '·';
+  color: var(--muted);
+}
+
+.ref-section + .ref-section {
+  margin-top: 1rem;
+}
+
+.ref-section__title {
+  margin: 0.75rem 0 0;
+  font-size: 0.95rem;
+}
+
+.ref-ranking {
+  margin: 0.25rem 0;
+}
+
+.ref-ranking--basic {
+  color: var(--warning);
+}
+
+.toggle select {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.ref-model-upload {
+  margin: 0.5rem 0;
+}
+
+.ref-model-upload summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.ref-model-upload[open] .ref-add {
+  margin-top: 0.5rem;
+}
+
+.status-pill--neutral {
+  background: var(--muted);
+}
+
+/* Reconstruction decision (reference session) */
+.recon__current {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.7rem;
+}
+
+.recon__message {
+  margin: 0.3rem 0 0;
+  color: var(--danger);
+}
+
+.recon__links {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.recon__routes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.recon__route {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+}
+
+.recon__route p {
+  margin: 0.2rem 0;
+}
+
+.recon__route--recommended {
+  border-color: var(--accent);
+}
+
+.recon__route--unavailable,
+.recon__route--unsupported {
+  opacity: 0.75;
+}
+
+.recon__route-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.recon__reasons,
+.recon__notes {
+  margin: 0.2rem 0 0.4rem;
+  padding-left: 1.1rem;
+}
+
+.recon__reason--warning {
+  color: var(--warning);
+}
+
+.recon__reason--blocker {
+  color: var(--muted);
+}
+
+/* Stock-shape form (part designer) */
+.primitive-form__dims {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.5rem 0.8rem;
+}

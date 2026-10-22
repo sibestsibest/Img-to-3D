@@ -19,6 +19,10 @@ models/
     LICENSE.txt            MIT
   u2net/
     u2net.onnx             background removal (rembg default model)
+  clip/                    optional (download-models.ps1 -Embeddings): reference ranking
+    vision_model_quantized.onnx   pixel_values[N,3,224,224] (CLIP-normalised)  ->  image_embeds[N,512]
+    text_model_quantized.onnx     input_ids[N,L] int64 (CLIP BPE, L <= 77)     ->  text_embeds[N,512]
+    vocab.json, merges.txt        CLIP byte-level BPE tokenizer (49,408 tokens, 48,894 merges)
 ```
 
 ## Provenance
@@ -27,6 +31,14 @@ models/
 |---|---|---|
 | `triposr/*` | [brodatech/triposr-onnx](https://huggingface.co/brodatech/triposr-onnx): ONNX export (opset 17) of [stabilityai/TripoSR](https://huggingface.co/stabilityai/TripoSR) using the architecture code from [VAST-AI-Research/TripoSR](https://github.com/VAST-AI-Research/TripoSR) commit `d26e331` | MIT |
 | `u2net/u2net.onnx` | [danielgatis/rembg](https://github.com/danielgatis/rembg) release `v0.0.0` | Apache-2.0 (U²-Net) |
+| `clip/*` | [Xenova/clip-vit-base-patch32](https://huggingface.co/Xenova/clip-vit-base-patch32) revision `d15189d` (Transformers.js export, dynamic int8 quantisation) of [openai/clip-vit-base-patch32](https://huggingface.co/openai/clip-vit-base-patch32) | MIT (OpenAI CLIP) |
+
+CLIP (optional, 89 MB + 65 MB + 1.4 MB tokenizer) runs on the CPU inside the API with ONNX
+Runtime 1.31 and needs no account or token. Like the TripoSR export it is a community conversion
+with no published parity numbers; what was verified here (`ClipRealModelTests`): the documented
+tensor interface, reference token IDs for "a photo of a cat", correct caption matching on the
+example chair and robot images, stability under resizing and JPEG, and a zero-shot render/drawing
+check. Without these files reference ranking still works from non-visual signals.
 
 The ONNX export is **community-made, not an official TripoSR release**. Its model card
 publishes no numerical comparison against the PyTorch model, and the project policy here forbids

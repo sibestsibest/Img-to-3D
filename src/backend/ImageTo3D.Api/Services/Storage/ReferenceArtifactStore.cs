@@ -17,6 +17,13 @@ public static class ReferenceArtifactNames
 
     /// <summary>Manual uploads only: the upright full-size picture.</summary>
     public static string FullImage(Guid candidateId) => $"c{candidateId:N}full.png";
+
+    /// <summary>Preview of a model candidate: the source's thumbnail, or a render of an uploaded mesh.</summary>
+    public static string ModelThumbnail(Guid modelId) => $"m{modelId:N}.jpg";
+
+    /// <summary>Uploaded model file, kept byte for byte; <paramref name="format"/> is "glb" or "stl".</summary>
+    public static string ModelFile(Guid modelId, string format) =>
+        format is "glb" or "stl" ? $"m{modelId:N}.{format}" : throw new ArgumentOutOfRangeException(nameof(format));
 }
 
 /// <summary>

@@ -8,9 +8,9 @@ namespace ImageTo3D.Api.Tests;
 
 public class ReferenceSearchTests
 {
-    private const string WikimediaApi = "commons.wikimedia.org/w/api.php";
-    private const string OpenverseApi = "api.openverse.org/v1/images/";
-    private const string ArchiveApi = "archive.org/advancedsearch.php";
+    internal const string WikimediaApi = "commons.wikimedia.org/w/api.php";
+    internal const string OpenverseApi = "api.openverse.org/v1/images/";
+    internal const string ArchiveApi = "archive.org/advancedsearch.php";
 
     /// <summary>A distinct, deterministic picture per seed (grey blocks at seeded positions).</summary>
     public static byte[] Picture(int seed, int w = 240, int h = 180, SKEncodedImageFormat format = SKEncodedImageFormat.Png)
@@ -32,7 +32,7 @@ public class ReferenceSearchTests
         return data.ToArray();
     }
 
-    private static string WikimediaJson(string thumbA = "https://thumb.wikimedia.org/thumb/a.png", string thumbB = "https://upload.wikimedia.org/thumb/b.png") => """
+    internal static string WikimediaJson(string thumbA = "https://thumb.wikimedia.org/thumb/a.png", string thumbB = "https://upload.wikimedia.org/thumb/b.png") => """
         {"batchcomplete":true,"query":{"pages":[
           {"pageid":101,"ns":6,"title":"File:RX-78-2_front_view.jpg","index":2,"imageinfo":[{
             "url":"https://upload.wikimedia.org/full/b.jpg","descriptionurl":"https://commons.wikimedia.org/wiki/File:RX-78-2_front_view.jpg",
@@ -69,7 +69,7 @@ public class ReferenceSearchTests
         web.OnImage("ia800100.us.archive.org/12/items/gundam-catalog-1985/__ia_thumb.jpg", Picture(4, format: SKEncodedImageFormat.Jpeg), "image/jpeg");
     }
 
-    private static async Task<ReferenceSessionDto> CreateSessionAsync(HttpClient client, string? query = "rx-78-2 gundam", byte[]? image = null, Guid? sourceJobId = null)
+    internal static async Task<ReferenceSessionDto> CreateSessionAsync(HttpClient client, string? query = "rx-78-2 gundam", byte[]? image = null, Guid? sourceJobId = null)
     {
         using var form = new MultipartFormDataContent();
         if (query is not null)
@@ -91,14 +91,14 @@ public class ReferenceSearchTests
         return (await response.Content.ReadFromJsonAsync<ReferenceSessionDto>(ApiFactory.Json))!;
     }
 
-    private static async Task<ReferenceSessionDto> SearchAsync(HttpClient client, Guid id, object? body = null)
+    internal static async Task<ReferenceSessionDto> SearchAsync(HttpClient client, Guid id, object? body = null)
     {
         var response = await client.PostAsJsonAsync($"/api/references/{id}/search", body ?? new { });
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         return (await response.Content.ReadFromJsonAsync<ReferenceSessionDto>(ApiFactory.Json))!;
     }
 
-    private static async Task<ReferenceSessionDto> ReadAsync(HttpResponseMessage response)
+    internal static async Task<ReferenceSessionDto> ReadAsync(HttpResponseMessage response)
     {
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
         return (await response.Content.ReadFromJsonAsync<ReferenceSessionDto>(ApiFactory.Json))!;

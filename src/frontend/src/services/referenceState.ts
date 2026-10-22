@@ -81,3 +81,85 @@ export const MANUAL_LICENSES: { value: string; label: string }[] = [
   { value: 'cc-by-nc-nd', label: 'CC BY-NC-ND' },
   { value: 'gfdl', label: 'GNU FDL' },
 ]
+
+export type CandidateOrder = 'rank' | 'found'
+
+export type CandidateGrouping = 'none' | 'group' | 'viewpoint'
+
+/** Best ranked first (unranked last, in discovery order), or discovery order. */
+export function sortCandidates(candidates: ReferenceCandidate[], order: CandidateOrder): ReferenceCandidate[] {
+  if (order === 'found') return candidates
+  return [...candidates].sort((a, b) => (a.ranking.position ?? Number.MAX_SAFE_INTEGER) - (b.ranking.position ?? Number.MAX_SAFE_INTEGER))
+}
+
+export interface CandidateSection {
+  key: string
+  title: string
+  items: ReferenceCandidate[]
+}
+
+/**
+ * Sections for display: by visual group (pictures whose embeddings are close) or by suggested
+ * viewpoint. Order inside a section is kept; sections follow their first item's position.
+ */
+export function groupCandidates(candidates: ReferenceCandidate[], grouping: CandidateGrouping): CandidateSection[] {
+  if (grouping === 'none') return [{ key: 'all', title: '', items: candidates }]
+  const sections = new Map<string, CandidateSection>()
+  for (const c of candidates) {
+    const [key, title] =
+      grouping === 'group'
+        ? c.ranking.group == null
+          ? ['ungrouped', 'Not compared visually']
+          : [`g${c.ranking.group}`, `Visual group ${c.ranking.group}`]
+        : [c.ranking.viewpoint?.label ?? 'unknown', viewpointLabel(c.ranking.viewpoint?.label)]
+    let section = sections.get(key)
+    if (!section) sections.set(key, (section = { key, title, items: [] }))
+    section.items.push(c)
+  }
+  return [...sections.values()]
+}
+
+const VIEWPOINT_LABELS: Record<string, string> = {
+  front: 'Front',
+  back: 'Back',
+  side: 'Side',
+  top: 'Top',
+  three_quarter: 'Three-quarter',
+  uncertain: 'Viewpoint uncertain',
+}
+
+export function viewpointLabel(label: string | undefined | null): string {
+  return label ? (VIEWPOINT_LABELS[label] ?? label) : 'Viewpoint unknown'
+}
+
+const SUGGESTION_LABELS: Record<string, string> = {
+  photo: 'photo',
+  render: 'render',
+  drawing: 'drawing',
+  same_object: 'same object?',
+  variant: 'variant?',
+  similar_different: 'similar, different?',
+  uncertain: 'uncertain',
+}
+
+export function suggestionLabel(label: string): string {
+  return SUGGESTION_LABELS[label] ?? VIEWPOINT_LABELS[label]?.toLowerCase() ?? label
+}
+
+export function percent(value: number | null | undefined): string {
+  return value == null ? '–' : `${Math.round(value * 100)}%`
+}
+
+/** Short reading of a confidence value, so nobody mistakes a ranking for a verdict. */
+export function confidenceLabel(value: number | null | undefined): string {
+  if (value == null) return 'not ranked'
+  if (value >= 0.75) return 'more evidence'
+  if (value >= 0.45) return 'some evidence'
+  return 'little evidence'
+}
+
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null) return '–'
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}

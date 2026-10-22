@@ -38,7 +38,8 @@ public sealed record ReferenceCandidateDto(
     string ImageKind,
     string Relation,
     string? Note,
-    IReadOnlyList<IssueDto> Warnings);
+    IReadOnlyList<IssueDto> Warnings,
+    CandidateRankingDto Ranking);
 
 /// <summary>
 /// Outcome of one source in a search: <c>ok</c>, <c>empty</c>, <c>failed</c>, <c>timeout</c>,
@@ -61,7 +62,10 @@ public sealed record ReferenceSessionDto(
     DateTime? LastSearchedAt,
     IReadOnlyList<SourceSearchResultDto> LastSearch,
     IReadOnlyList<ManualSearchLinkDto> ManualLinks,
-    IReadOnlyList<ReferenceCandidateDto> Candidates);
+    IReadOnlyList<ReferenceCandidateDto> Candidates,
+    SessionRankingDto Ranking,
+    IReadOnlyList<SourceSearchResultDto> LastModelSearch,
+    IReadOnlyList<ModelCandidateDto> Models);
 
 public sealed record ReferenceSessionSummaryDto(
     Guid Id,
@@ -110,4 +114,89 @@ public sealed class UpdateCandidateRequest
     public string? Note { get; set; }
 }
 
-public sealed record ClearReferenceCacheDto(int SearchEntries, int Files, long Bytes);
+public sealed record ClearReferenceCacheDto(int SearchEntries, int Files, long Bytes, int Embeddings);
+
+/// <summary>Advisory label with its probability (zero-shot) or capped confidence; "uncertain" when no label is clearly ahead.</summary>
+public sealed record ZeroShotDto(string Label, double Confidence);
+
+/// <summary>One contribution to a score: <c>effect</c> is "+", "-" or "0" (informational).</summary>
+public sealed record RankReasonDto(string Code, string Message, string Effect);
+
+/// <summary>
+/// Ranking of one picture. All values are advisory: <c>score</c> mixes the available signals,
+/// <c>confidence</c> says how much evidence it rests on, and the suggestions never assert identity.
+/// </summary>
+public sealed record CandidateRankingDto(
+    int? Position,
+    double? Score,
+    double? Confidence,
+    int? Group,
+    double? QuerySimilarity,
+    double? InputSimilarity,
+    ZeroShotDto? Viewpoint,
+    ZeroShotDto? Kind,
+    ZeroShotDto? Relation,
+    IReadOnlyList<RankReasonDto> Reasons);
+
+/// <summary><c>mode</c>: "embeddings" or "basic" (no visual signals; <c>note</c> says why). Null before the first ranking.</summary>
+public sealed record SessionRankingDto(string? Mode, DateTime? RankedAt, string? Note, ZeroShotDto? InputViewpoint, string EmbeddingModel);
+
+public sealed record ModelGeometryDto(
+    int Triangles,
+    int Components,
+    bool Closed,
+    int BoundaryEdges,
+    int NonManifoldEdges,
+    int DegenerateTriangles,
+    double SizeXMm,
+    double SizeYMm,
+    double SizeZMm,
+    string ScaleStatus);
+
+/// <summary>
+/// An existing 3D model. <c>evaluationStatus</c> is <c>metadata_only</c> (listing and preview
+/// only; the mesh was not checked) or <c>geometry_checked</c> (uploaded file read and analysed).
+/// </summary>
+public sealed record ModelCandidateDto(
+    Guid Id,
+    string Origin,
+    string Source,
+    string SourceName,
+    string Title,
+    string? PageUrl,
+    string? Author,
+    ReferenceLicenseDto License,
+    string Attribution,
+    string? Query,
+    DateTime RetrievedAt,
+    bool? IsDownloadable,
+    int? FaceCount,
+    int? VertexCount,
+    long? FileBytes,
+    bool HasThumbnail,
+    string DownloadStatus,
+    string? Format,
+    string EvaluationStatus,
+    double? Score,
+    double? Confidence,
+    double? VisualSimilarity,
+    IReadOnlyList<RankReasonDto> Reasons,
+    ModelGeometryDto? Geometry,
+    string Decision,
+    string? Note,
+    IReadOnlyList<IssueDto> Warnings);
+
+public sealed class UpdateModelRequest
+{
+    /// <summary>pending, accepted or rejected.</summary>
+    [Required]
+    public string? Decision { get; set; }
+
+    [StringLength(1000)]
+    public string? Note { get; set; }
+}
+
+public sealed record EmbeddingStatusDto(bool Available, string Model, string? Reason);
+
+/// <summary>What the server can do for reference search right now.</summary>
+public sealed record ReferenceCapabilitiesDto(EmbeddingStatusDto Embeddings, IReadOnlyList<ReferenceSourceDto> ImageSources, IReadOnlyList<ReferenceSourceDto> ModelSources);

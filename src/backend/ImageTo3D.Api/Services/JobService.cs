@@ -77,12 +77,48 @@ public sealed partial class JobService(
         if (extras.FirstOrDefault(f => f.Length > o.MaxBytes) is not null)
             throw new ApiException(StatusCodes.Status413PayloadTooLarge, "file_too_large", $"An extra photo is larger than the {o.MaxBytes / (1024 * 1024)} MB limit.");
 
-        var active = await db.Jobs.CountAsync(j => j.OwnerKeyHash == ownerHash && (j.Status == JobStatus.Pending || j.Status == JobStatus.Processing), cancellationToken);
-        if (active >= o.MaxActiveJobsPerOwner)
-            throw new ApiException(StatusCodes.Status429TooManyRequests, "too_many_active_jobs", $"You already have {active} generations in progress. Wait for one to finish before submitting another.");
-
-        var limits = new ImageLimits(o.MinDimension, o.MaxDimension, o.MaxPixels);
+        await EnsureActiveCapacityAsync(cancellationToken);
         var bytes = await ReadAsync(file, cancellationToken);
+        var extraBytes = new List<byte[]>(extras.Count);
+        foreach (var extra in extras)
+            extraBytes.Add(await ReadAsync(extra, cancellationToken));
+        return await CreateCoreAsync(bytes, file.FileName, extraBytes, views, idempotencyKey, cancellationToken);
+    }
+
+    /// <summary>
+    /// Starts a generation from images the server already holds (a reference session's input photo
+    /// and accepted references), with the same validation, limits and queue as an upload.
+    /// </summary>
+    public async Task<JobDto> CreateFromImagesAsync(byte[] image, string fileName, IReadOnlyList<(byte[] Image, string View)> extras, CancellationToken cancellationToken)
+    {
+        if (extras.Count > uploadOptions.Value.MaxExtraImages)
+            throw new ApiException(StatusCodes.Status400BadRequest, "too_many_images", $"At most {uploadOptions.Value.MaxExtraImages} extra photos can be used.");
+        if (extras.Any(e => !ExtraViewHints.Contains(e.View)))
+            throw new ArgumentException("Unknown view hint.", nameof(extras));
+        await EnsureActiveCapacityAsync(cancellationToken);
+        var (job, _) = await CreateCoreAsync(image, fileName, extras.Select(e => e.Image).ToList(), extras.Select(e => e.View).ToList(), null, cancellationToken);
+        return job;
+    }
+
+    private async Task EnsureActiveCapacityAsync(CancellationToken cancellationToken)
+    {
+        var ownerHash = owner.OwnerKeyHash;
+        var active = await db.Jobs.CountAsync(j => j.OwnerKeyHash == ownerHash && (j.Status == JobStatus.Pending || j.Status == JobStatus.Processing), cancellationToken);
+        if (active >= uploadOptions.Value.MaxActiveJobsPerOwner)
+            throw new ApiException(StatusCodes.Status429TooManyRequests, "too_many_active_jobs", $"You already have {active} generations in progress. Wait for one to finish before submitting another.");
+    }
+
+    private async Task<(JobDto Job, bool Created)> CreateCoreAsync(
+        byte[] bytes,
+        string fileName,
+        IReadOnlyList<byte[]> extras,
+        IReadOnlyList<string> views,
+        string? idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        var o = uploadOptions.Value;
+        var ownerHash = owner.OwnerKeyHash;
+        var limits = new ImageLimits(o.MinDimension, o.MaxDimension, o.MaxPixels);
         DecodedImage decoded;
         try
         {
@@ -99,7 +135,7 @@ public sealed partial class JobService(
         {
             try
             {
-                extraPngs.Add(ImageDecoder.EncodePng(ImageDecoder.Decode(await ReadAsync(extras[i], cancellationToken), limits).Image));
+                extraPngs.Add(ImageDecoder.EncodePng(ImageDecoder.Decode(extras[i], limits).Image));
             }
             catch (ImageValidationException ex)
             {
@@ -120,7 +156,7 @@ public sealed partial class JobService(
             Id = Guid.NewGuid(),
             OwnerKeyHash = ownerHash,
             IdempotencyKey = idempotencyKey,
-            OriginalFileName = SanitizeDisplayName(file.FileName, extension),
+            OriginalFileName = SanitizeDisplayName(fileName, extension),
             OriginalFormat = extension,
             OriginalSizeBytes = bytes.Length,
             ImageWidth = decoded.Image.Width,

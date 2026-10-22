@@ -83,14 +83,30 @@ public class ReferenceSearchSupportTests
         var results = ReferenceDeduplicator.Assign(
         [
             new(A, null, null),
-            new(B, "bb", 0b0000),
-            new(C, "cc", 0b0011), // near B
-            new(D, "dd", 0b0111), // 3 bits from B, 1 from C: C is a duplicate, so D is compared with B only
+            new(B, "bb", 0xFF00),
+            new(C, "cc", 0xFF03), // near B
+            new(D, "dd", 0xFF07), // 3 bits from B, 1 from C: C is a duplicate, so D is compared with B only
         ], inputHash: null, threshold: 2);
 
         Assert.Null(results[A].DuplicateOf);
         Assert.Equal(B, results[C].DuplicateOf);
         Assert.Null(results[D].DuplicateOf);
+        Assert.All(results.Values, r => Assert.False(r.MatchesInput));
+    }
+
+    [Fact]
+    public void Deduplicator_FeaturelessHashesAreNeverNearDuplicates()
+    {
+        // Flat pictures of any colour hash to (almost) zero: only an identical file is a duplicate.
+        var results = ReferenceDeduplicator.Assign(
+        [
+            new(A, "red", 0),
+            new(B, "blue", 0b1),
+            new(C, "red", 0b10),
+        ], inputHash: 0, threshold: 6);
+
+        Assert.Null(results[B].DuplicateOf);
+        Assert.Equal((A, "exact"), (results[C].DuplicateOf!.Value, results[C].Kind));
         Assert.All(results.Values, r => Assert.False(r.MatchesInput));
     }
 

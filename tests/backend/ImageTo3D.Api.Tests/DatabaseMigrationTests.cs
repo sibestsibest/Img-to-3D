@@ -106,8 +106,38 @@ public class DatabaseMigrationTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Empty(db.Database.GetPendingMigrations());
-        Assert.Equal(4, db.Database.GetAppliedMigrations().Count());
+        Assert.Equal(6, db.Database.GetAppliedMigrations().Count());
         // WAL lets the background worker and requests write concurrently (EnsureCreated used to set it).
         Assert.Equal("wal", db.Database.SqlQueryRaw<string>("SELECT journal_mode AS \"Value\" FROM pragma_journal_mode").AsEnumerable().Single());
+    }
+
+    [Fact]
+    public void ReconstructionMigration_KeepsExistingProjectsAsMadeFromJobs()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "imageto3d-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "phase5.db");
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite($"Data Source={path}").Options;
+        using (var db = new AppDbContext(options))
+        {
+            Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>(db)
+                .Migrate("20261022082350_AddReferenceRankingAndModels");
+            db.Database.ExecuteSqlRaw("""
+                INSERT INTO "PartDesignProjects" ("Id", "OwnerKeyHash", "Name", "SourceJobId", "SourceFileName", "MmPerModelUnit",
+                    "FitAllowanceMinMm", "FitAllowanceMaxMm", "IssuesJson", "CreatedAt", "UpdatedAt")
+                VALUES ('7f000000-0000-4000-8000-000000000001', 'owner', 'Old project', '8b1c3f0e-0000-4000-8000-000000000001', 'part.png', 100,
+                    -0.5, 0.5, '[]', '2026-10-01 10:00:00', '2026-10-01 10:00:00');
+                """);
+            db.Database.Migrate();
+
+            var project = db.PartDesigns.AsNoTracking().Single();
+            Assert.Equal("generation_job", project.SourceKind);
+            Assert.Equal(Guid.Parse("8b1c3f0e-0000-4000-8000-000000000001"), project.SourceJobId);
+            Assert.Equal(100, project.MmPerModelUnit);
+            Assert.Null(project.SourceModelCandidateId);
+        }
+
+        SqliteConnection.ClearAllPools();
+        Directory.Delete(directory, recursive: true);
     }
 }

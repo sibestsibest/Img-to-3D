@@ -36,6 +36,30 @@ public class JobWorkflowTests
     }
 
     [Fact]
+    public async Task ExtraPhotos_AreStoredAndSentWithTheirViews()
+    {
+        using var factory = new ApiFactory();
+        var client = factory.CreateClient();
+        using var content = new MultipartFormDataContent();
+        foreach (var (name, field) in new[] { ("main.png", "image"), ("back.png", "extraImages"), ("top.png", "extraImages") })
+        {
+            var file = new ByteArrayContent(TestImages.Png());
+            file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+            content.Add(file, field, name);
+        }
+
+        content.Add(new StringContent("back"), "extraViews");
+        content.Add(new StringContent("top"), "extraViews");
+        var response = await client.PostAsync("/api/models", content);
+        Assert.True(response.StatusCode == HttpStatusCode.Accepted || response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+
+        var job = await client.WaitForTerminalAsync((await response.Content.ReadFromJsonAsync<JobDto>(ApiFactory.Json))!.Id);
+        Assert.Equal(JobStatus.Succeeded, job.Status);
+        var extras = Assert.Single(factory.Inference.SubmittedExtras);
+        Assert.Equal(["back", "top"], extras.Select(e => e.View));
+    }
+
+    [Fact]
     public async Task ProcessingStage_IsPersistedWhileRunning()
     {
         using var factory = new ApiFactory();

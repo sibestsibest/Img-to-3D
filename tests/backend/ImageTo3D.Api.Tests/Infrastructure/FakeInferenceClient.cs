@@ -60,8 +60,20 @@ public sealed class FakeInferenceClient : IInferenceClient
         return GlbWriter.Write(new Mesh(p, i));
     }
 
+    /// <summary>Engine name reported by health (null like the TripoSR service before engines were named).</summary>
+    public string? Engine { get; set; }
+
+    /// <summary>Extra photos of every submission, in order.</summary>
+    public ConcurrentQueue<IReadOnlyList<InferenceExtraImage>> SubmittedExtras { get; } = new();
+
     public Task<InferenceHealthDto?> GetHealthAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<InferenceHealthDto?>(Mode == FakeMode.Unavailable ? null : new InferenceHealthDto("ok", "Ready", null, "Cpu", 0));
+        Task.FromResult<InferenceHealthDto?>(Mode == FakeMode.Unavailable ? null : new InferenceHealthDto("ok", "Ready", null, "Cpu", 0, Engine));
+
+    public Task<InferenceJobDto> SubmitAsync(byte[] png, IReadOnlyList<InferenceExtraImage> extras, string correlationId, CancellationToken cancellationToken)
+    {
+        SubmittedExtras.Enqueue(extras);
+        return SubmitAsync(png, correlationId, cancellationToken);
+    }
 
     public Task<InferenceJobDto> SubmitAsync(byte[] png, string correlationId, CancellationToken cancellationToken)
     {

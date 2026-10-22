@@ -1,5 +1,6 @@
 import type { ExtraPhoto, Job, PagedResult, ProblemDetails, ScaleAxis } from '../types/api'
 import type {
+  AddPrimitiveRequest,
   DesignRelease,
   DrawingFormat,
   DrawingReport,
@@ -13,6 +14,11 @@ import type {
 import type {
   ClearCacheResult,
   ManualPicture,
+  ModelUpload,
+  Reconstruction,
+  ReconstructionRoute,
+  ReferenceCapabilities,
+  ReferenceDecision,
   ReferenceSession,
   ReferenceSessionSummary,
   ReferenceSource,
@@ -131,6 +137,9 @@ const json = (method: string, body: unknown): RequestInit => ({
 
 export const designApi = {
   create: (sourceJobId: string, name?: string) => request<PartDesignProject>('/part-designs', json('POST', { sourceJobId, name })),
+  /** An empty project for parts built from stock shapes. */
+  createBlank: (name?: string) => request<PartDesignProject>('/part-designs/blank', json('POST', { name })),
+  addPrimitive: (id: string, body: AddPrimitiveRequest) => request<PartDesignProject>(designPath(id, '/parts/primitive'), json('POST', body)),
   list: (page = 1, pageSize = 50) => request<PagedResult<PartDesignSummary>>(`/part-designs?page=${page}&pageSize=${pageSize}`),
   get: (id: string, signal?: AbortSignal) => request<PartDesignProject>(designPath(id), { signal }),
   remove: (id: string) => request<void>(designPath(id), { method: 'DELETE' }),
@@ -183,6 +192,26 @@ export const referenceApi = {
     request<ReferenceSession>(candidatePath(id, candidateId), json('PUT', body)),
   removeCandidate: (id: string, candidateId: string) => request<ReferenceSession>(candidatePath(id, candidateId), { method: 'DELETE' }),
   clearCache: () => request<ClearCacheResult>('/references/cache', { method: 'DELETE' }),
+  capabilities: () => request<ReferenceCapabilities>('/references/capabilities'),
+  /** Recompute ranking and groups, using the pictures accepted so far. */
+  rank: (id: string) => request<ReferenceSession>(referencePath(id, '/rank'), { method: 'POST' }),
+  searchModels: (id: string, query: string) => request<ReferenceSession>(referencePath(id, '/models/search'), json('POST', { query })),
+  addModel(id: string, upload: ModelUpload): Promise<ReferenceSession> {
+    const body = new FormData()
+    body.append('file', upload.file)
+    for (const key of ['title', 'author', 'pageUrl', 'license'] as const) {
+      const value = upload[key]?.trim()
+      if (value) body.append(key, value)
+    }
+    return request<ReferenceSession>(referencePath(id, '/models'), { method: 'POST', body })
+  },
+  updateModel: (id: string, modelId: string, decision: ReferenceDecision, note?: string | null) =>
+    request<ReferenceSession>(referencePath(id, `/models/${encodeURIComponent(modelId)}`), json('PUT', { decision, note })),
+  removeModel: (id: string, modelId: string) => request<ReferenceSession>(referencePath(id, `/models/${encodeURIComponent(modelId)}`), { method: 'DELETE' }),
+  /** Which ways to get geometry are possible, the recommendation, and the state of what was started. */
+  reconstruction: (id: string, signal?: AbortSignal) => request<Reconstruction>(referencePath(id, '/reconstruction'), { signal }),
+  startReconstruction: (id: string, route: ReconstructionRoute, options: { modelId?: string; name?: string } = {}) =>
+    request<Reconstruction>(referencePath(id, '/reconstruction'), json('POST', { route, ...options })),
 }
 
 /** Relative URLs only: the browser never learns internal service addresses or file paths. */
@@ -205,4 +234,6 @@ export const urls = {
   /** Stored previews never change for a given ID. */
   referenceThumbnail: (sessionId: string, candidateId: string) => `${BASE}${candidatePath(sessionId, candidateId, '/thumbnail')}`,
   referenceInput: (sessionId: string, size: 'thumbnail' | 'full' = 'thumbnail') => `${BASE}${referencePath(sessionId, '/input')}?size=${size}`,
+  modelThumbnail: (sessionId: string, modelId: string) => `${BASE}${referencePath(sessionId, `/models/${encodeURIComponent(modelId)}/thumbnail`)}`,
+  modelFile: (sessionId: string, modelId: string) => `${BASE}${referencePath(sessionId, `/models/${encodeURIComponent(modelId)}/file`)}`,
 }

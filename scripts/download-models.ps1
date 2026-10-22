@@ -6,12 +6,15 @@
   - TripoSR (stabilityai/TripoSR, MIT) exported to ONNX by the community repo brodatech/triposr-onnx
     (export of VAST-AI-Research/TripoSR commit d26e331, opset 17).
   - U^2-Net (u2net.onnx), the default background-removal model used by rembg.
+  - With -Embeddings: OpenAI CLIP ViT-B/32 (MIT), int8 ONNX export by Xenova/clip-vit-base-patch32
+    (revision d15189d), ~155 MB, for ranking reference images. Optional: ranking works without it.
   Files that already exist with the right checksum are skipped.
 #>
 [CmdletBinding()]
 param(
     [string]$ModelDir = (Join-Path $PSScriptRoot '..\models'),
-    [string]$SampleDir = (Join-Path $PSScriptRoot '..\samples')
+    [string]$SampleDir = (Join-Path $PSScriptRoot '..\samples'),
+    [switch]$Embeddings
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +29,17 @@ $files = @(
     @{ Url = "$triposr/LICENSE.txt";        Path = 'triposr/LICENSE.txt';        Sha = 'b5ed400bf58c5d7ebc253530c96cfb9a3506261809ed1d4438c22d23d5f6fc41' },
     @{ Url = 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx'; Path = 'u2net/u2net.onnx'; Sha = '8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491' }
 )
+
+if ($Embeddings) {
+    # Pinned to a revision so the checksums stay valid.
+    $clip = 'https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/d15189d7028b43f1d3e65039190477f6af591c2a'
+    $files += @(
+        @{ Url = "$clip/onnx/vision_model_quantized.onnx"; Path = 'clip/vision_model_quantized.onnx'; Sha = '583fd1110a514667812fee7d684952aaf82a99b959760c8d7dca7e0ab9839299' },
+        @{ Url = "$clip/onnx/text_model_quantized.onnx";   Path = 'clip/text_model_quantized.onnx';   Sha = '73baab855d406190da9faa498cfedf65f15cf309f4cc7385b7b032e6d08e5c3a' },
+        @{ Url = "$clip/vocab.json";                       Path = 'clip/vocab.json';                  Sha = '5047b556ce86ccaf6aa22b3ffccfc52d391ea4accdab9c2f2407da5b742d4363' },
+        @{ Url = "$clip/merges.txt";                       Path = 'clip/merges.txt';                  Sha = '9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a' }
+    )
+}
 
 foreach ($f in $files) {
     $target = Join-Path $ModelDir $f.Path

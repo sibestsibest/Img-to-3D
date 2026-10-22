@@ -230,7 +230,7 @@ public sealed partial class PartDesignService
             Utc(createdAt),
             "mm",
             CoordinateSystem,
-            new ManifestProjectDto(project.Id, project.Name, project.SourceJobId, project.SourceFileName, project.MmPerModelUnit, "estimated", HistorySequence(project), Utc(project.UpdatedAt)),
+            new ManifestProjectDto(project.Id, project.Name, project.SourceJobId, project.SourceFileName, SourceDto(project), project.MmPerModelUnit, "estimated", HistorySequence(project), Utc(project.UpdatedAt)),
             parts.Select(p => new ManifestPartDto(p.Item, p.Part.Id, p.Part.Name, p.Part.Category, p.Part.ReviewStatus, p.Validation.Status, p.Part.Quantity,
                 files.Where(f => f.PartId == p.Part.Id).Select(f => f.Path).ToList())).ToList(),
             files.Select(f => new ManifestFileDto(f.Path, f.Kind, f.PartId, f.Content.LongLength, Sha256(f.Content))).ToList(),
@@ -361,7 +361,10 @@ public sealed partial class PartDesignService
     {
         var sb = new StringBuilder();
         sb.AppendLine($"{project.Name} - fabrication package, {label}");
-        sb.AppendLine($"Generated {createdAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} UTC by ImageTo3D from '{project.SourceFileName}'.");
+        var from = project.SourceKind == DesignSourceKinds.None ? "" : $" from '{project.SourceFileName}'";
+        sb.AppendLine($"Generated {createdAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} UTC by ImageTo3D{from}.");
+        if (project.SourceAttribution is { } attribution)
+            sb.AppendLine("Source model: " + attribution + ". Respect its licence when sharing anything made from it.");
         if (note is not null)
             sb.AppendLine("Note: " + note);
         sb.AppendLine();
@@ -374,7 +377,12 @@ public sealed partial class PartDesignService
         sb.AppendLine();
         sb.AppendLine("Before cutting");
         sb.AppendLine("  - Print PDFs at 100% / actual size, never 'fit to page'; check the 100 mm bar with a ruler.");
-        sb.AppendLine("  - All lengths are millimetres. Dimensions come from an AI-generated model at an estimated scale;");
+        sb.AppendLine(project.SourceKind switch
+        {
+            DesignSourceKinds.ReferenceModel => "  - All lengths are millimetres. Dimensions come from a reused model at its file's declared scale;",
+            DesignSourceKinds.None => "  - All lengths are millimetres. Parts built from stock shapes have the sizes entered; others are estimates;",
+            _ => "  - All lengths are millimetres. Dimensions come from an AI-generated model at an estimated scale;",
+        });
         sb.AppendLine("    values marked 'estimated' must be confirmed on the real part.");
         sb.AppendLine(warningCount == 0 ? "  - No warnings." : $"  - {warningCount} warning(s): see manifest.json.");
         return sb.ToString();

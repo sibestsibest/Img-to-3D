@@ -14,8 +14,33 @@ namespace ImageTo3D.Api.Controllers;
 [ApiController]
 [Route("api/references")]
 [Produces("application/json")]
-public sealed class ReferencesController(ReferenceService references) : ControllerBase
+public sealed class ReferencesController(ReferenceService references, ReconstructionService reconstruction) : ControllerBase
 {
+    /// <summary>
+    /// How geometry can be obtained for this search, in preference order (reuse an accepted model,
+    /// multi-view [unsupported], hybrid, single image, manual), the recommendation and the state of
+    /// anything started. A started generation's state follows its job.
+    /// </summary>
+    [HttpGet("{id:guid}/reconstruction")]
+    [ProducesResponseType<ReconstructionDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public Task<ReconstructionDto> Reconstruction(Guid id, CancellationToken cancellationToken) => reconstruction.GetAsync(id, cancellationToken);
+
+    /// <summary>
+    /// Start a route: reuse creates a part design from the accepted model (no inference), manual
+    /// creates an empty part design, single image and hybrid start a generation job from the
+    /// session's photos. Refused (409) when the route is unavailable or a generation is still running.
+    /// </summary>
+    [HttpPost("{id:guid}/reconstruction")]
+    [EnableRateLimiting(RateLimitPolicies.Uploads)]
+    [Consumes("application/json")]
+    [ProducesResponseType<ReconstructionDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
+    public Task<ReconstructionDto> StartReconstruction(Guid id, [FromBody] StartReconstructionRequest request, CancellationToken cancellationToken) =>
+        reconstruction.StartAsync(id, request, cancellationToken);
+
     /// <summary>The sources the server can search and whether each is enabled. None needs an account or key.</summary>
     [HttpGet("sources")]
     public IReadOnlyList<ReferenceSourceDto> Sources() => references.ListSources();
@@ -116,7 +141,62 @@ public sealed class ReferencesController(ReferenceService references) : Controll
     public async Task<IActionResult> Thumbnail(Guid id, Guid candidateId, CancellationToken cancellationToken) =>
         Image(await references.OpenThumbnailAsync(id, candidateId, cancellationToken));
 
-    /// <summary>Clear the shared, disposable caches (search responses and downloads). Sessions keep their pictures.</summary>
+    /// <summary>Whether visual embeddings are available (loads the model on first call) and which image and model sources exist.</summary>
+    [HttpGet("capabilities")]
+    public Task<ReferenceCapabilitiesDto> Capabilities(CancellationToken cancellationToken) => references.CapabilitiesAsync(cancellationToken);
+
+    /// <summary>Recompute ranking, groups and suggestions for pictures and models (uses the pictures accepted so far).</summary>
+    [HttpPost("{id:guid}/rank")]
+    [EnableRateLimiting(RateLimitPolicies.ReferenceSearches)]
+    [ProducesResponseType<ReferenceSessionDto>(StatusCodes.Status200OK)]
+    public Task<ReferenceSessionDto> Rank(Guid id, CancellationToken cancellationToken) => references.RankAsync(id, cancellationToken);
+
+    /// <summary>Search Sketchfab listings for existing models (anonymous; nothing but previews is downloaded). Always 200; the source reports its status.</summary>
+    [HttpPost("{id:guid}/models/search")]
+    [EnableRateLimiting(RateLimitPolicies.ReferenceSearches)]
+    [Consumes("application/json")]
+    [ProducesResponseType<ReferenceSessionDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    public Task<ReferenceSessionDto> SearchModels(Guid id, [FromBody] SearchReferencesRequest request, CancellationToken cancellationToken) =>
+        references.SearchModelsAsync(id, request, cancellationToken);
+
+    /// <summary>Upload a binary GLB or binary STL (multipart "file" plus optional title, author, pageUrl, license, licenseUrl) to have it checked.</summary>
+    [HttpPost("{id:guid}/models")]
+    [EnableRateLimiting(RateLimitPolicies.Uploads)]
+    [RequestSizeLimit(520L * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 520L * 1024 * 1024)]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType<ReferenceSessionDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status413PayloadTooLarge)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    public Task<ReferenceSessionDto> AddModel(Guid id, IFormFile? file, [FromForm] AddReferenceImageForm form, CancellationToken cancellationToken) =>
+        references.AddModelAsync(id, file, form, cancellationToken);
+
+    [HttpPut("{id:guid}/models/{modelId:guid}")]
+    [Consumes("application/json")]
+    public Task<ReferenceSessionDto> UpdateModel(Guid id, Guid modelId, [FromBody] UpdateModelRequest request, CancellationToken cancellationToken) =>
+        references.UpdateModelAsync(id, modelId, request, cancellationToken);
+
+    [HttpDelete("{id:guid}/models/{modelId:guid}")]
+    public Task<ReferenceSessionDto> RemoveModel(Guid id, Guid modelId, CancellationToken cancellationToken) =>
+        references.RemoveModelAsync(id, modelId, cancellationToken);
+
+    [HttpGet("{id:guid}/models/{modelId:guid}/thumbnail")]
+    public async Task<IActionResult> ModelThumbnail(Guid id, Guid modelId, CancellationToken cancellationToken) =>
+        Image(await references.OpenModelThumbnailAsync(id, modelId, cancellationToken));
+
+    /// <summary>The uploaded GLB/STL of a model candidate, unchanged.</summary>
+    [HttpGet("{id:guid}/models/{modelId:guid}/file")]
+    public async Task<IActionResult> ModelFile(Guid id, Guid modelId, CancellationToken cancellationToken)
+    {
+        var file = await references.OpenModelFileAsync(id, modelId, cancellationToken);
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>Clear the shared, disposable caches (search responses, downloads, embeddings). Sessions keep their pictures.</summary>
     [HttpDelete("cache")]
     [ProducesResponseType<ClearReferenceCacheDto>(StatusCodes.Status200OK)]
     public Task<ClearReferenceCacheDto> ClearCache(CancellationToken cancellationToken) => references.ClearCacheAsync(cancellationToken);

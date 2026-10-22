@@ -7,6 +7,9 @@ public enum ResampleFilter
 
     /// <summary>Lanczos-3; equals PIL LANCZOS.</summary>
     Lanczos,
+
+    /// <summary>Cubic convolution (a = -0.5, support 2) widened on downscale; equals PIL BICUBIC, which CLIP preprocessing uses.</summary>
+    Bicubic,
 }
 
 /// <summary>
@@ -61,7 +64,12 @@ public static class Resampler
 
     private static (int Start, double[] Weights)[] ComputeWeights(int inSize, int outSize, ResampleFilter filter)
     {
-        var support = filter == ResampleFilter.Bilinear ? 1.0 : 3.0;
+        var support = filter switch
+        {
+            ResampleFilter.Bilinear => 1.0,
+            ResampleFilter.Bicubic => 2.0,
+            _ => 3.0,
+        };
         var scale = (double)inSize / outSize;
         var filterScale = Math.Max(scale, 1.0);
         var radius = support * filterScale;
@@ -102,6 +110,13 @@ public static class Resampler
         x = Math.Abs(x);
         if (filter == ResampleFilter.Bilinear)
             return x < 1 ? 1 - x : 0;
+        if (filter == ResampleFilter.Bicubic)
+        {
+            const double a = -0.5;
+            if (x < 1)
+                return ((a + 2) * x - (a + 3)) * x * x + 1;
+            return x < 2 ? (((x - 5) * x + 8) * x - 4) * a : 0;
+        }
 
         if (x >= 3)
             return 0;

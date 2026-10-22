@@ -183,6 +183,66 @@ public sealed class ReferenceSearchOptions
     public int NearDuplicateDistance { get; set; } = 6;
 }
 
+/// <summary>
+/// Optional local CLIP image/text embeddings for ranking references and model candidates. When
+/// the model files are missing or this is turned off, ranking falls back to non-visual signals.
+/// </summary>
+public sealed class EmbeddingOptions
+{
+    public const string SectionName = "Embeddings";
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Folder with the CLIP files (see models/README.md); resolved against the API content root.</summary>
+    [Required]
+    public string ModelDirectory { get; set; } = "../../../models/clip";
+
+    [Required]
+    public string VisionModel { get; set; } = "vision_model_quantized.onnx";
+
+    [Required]
+    public string TextModel { get; set; } = "text_model_quantized.onnx";
+
+    [Required]
+    public string Vocabulary { get; set; } = "vocab.json";
+
+    [Required]
+    public string Merges { get; set; } = "merges.txt";
+
+    /// <summary>CPU threads per inference call; small so ranking never starves the web server.</summary>
+    [Range(1, 64)]
+    public int IntraOpThreads { get; set; } = 2;
+
+    /// <summary>Mean cosine similarity at or above which pictures are grouped together (variant groups).</summary>
+    [Range(0.5, 0.99)]
+    public double GroupThreshold { get; set; } = 0.86;
+}
+
+/// <summary>Search for existing 3D models. Sketchfab search is anonymous; downloads (which need a token) are not used.</summary>
+public sealed class ModelSearchOptions
+{
+    public const string SectionName = "ModelSearch";
+
+    public bool SketchfabEnabled { get; set; } = true;
+
+    [Required]
+    public Uri SketchfabApiUrl { get; set; } = new("https://api.sketchfab.com/v3/search");
+
+    [Range(1, 24)]
+    public int ResultsPerSearch { get; set; } = 24;
+
+    [Range(1, 500)]
+    public int MaxModelsPerSession { get; set; } = 100;
+
+    /// <summary>Largest GLB/STL accepted for evaluation.</summary>
+    [Range(1024, 512L * 1024 * 1024)]
+    public long MaxUploadBytes { get; set; } = 64L * 1024 * 1024;
+
+    /// <summary>Uploaded models above this are refused (evaluation runs inside the request).</summary>
+    [Range(1, 20_000_000)]
+    public int MaxTriangles { get; set; } = 2_000_000;
+}
+
 public sealed class ModelOutputOptions
 {
     public const string SectionName = "ModelOutput";

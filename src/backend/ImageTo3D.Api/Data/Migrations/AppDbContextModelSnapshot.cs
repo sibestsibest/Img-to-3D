@@ -335,6 +335,158 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.ToTable("GenerationJobs", (string)null);
                 });
 
+            modelBuilder.Entity("ImageTo3D.Api.Models.ImageEmbeddingCacheEntry", b =>
+                {
+                    b.Property<string>("Model")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImageSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("Vector")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.HasKey("Model", "ImageSha256");
+
+                    b.ToTable("ImageEmbeddingCache", (string)null);
+                });
+
+            modelBuilder.Entity("ImageTo3D.Api.Models.ModelCandidate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Author")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Confidence")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DownloadError")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DownloadStatus")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EvaluationStatus")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("FaceCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("FileBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Format")
+                        .HasMaxLength(8)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GeometryJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("HasThumbnail")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("IsDownloadable")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("License")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LicenseRaw")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LicenseUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PageUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Query")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReasonsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RetrievedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Score")
+                        .HasColumnType("REAL");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceItemId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ThumbnailUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("VertexCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("VisualSimilarity")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId", "Source", "SourceItemId")
+                        .IsUnique();
+
+                    b.ToTable("ModelCandidates", (string)null);
+                });
+
             modelBuilder.Entity("ImageTo3D.Api.Models.PartDesignProject", b =>
                 {
                     b.Property<Guid>("Id")
@@ -367,12 +519,31 @@ namespace ImageTo3D.Api.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SourceAttribution")
+                        .HasMaxLength(700)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SourceFileName")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("SourceJobId")
+                    b.Property<Guid?>("SourceJobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceKind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceLicense")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SourceModelCandidateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SourceReferenceSessionId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -459,6 +630,9 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.Property<Guid?>("DuplicateOfId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("GroupIndex")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("HasFullImage")
                         .HasColumnType("INTEGER");
 
@@ -476,6 +650,12 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
+
+                    b.Property<double?>("InputSimilarity")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("KindConfidence")
+                        .HasColumnType("REAL");
 
                     b.Property<string>("License")
                         .IsRequired()
@@ -510,10 +690,28 @@ namespace ImageTo3D.Api.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<double?>("QuerySimilarity")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("RankConfidence")
+                        .HasColumnType("REAL");
+
+                    b.Property<int?>("RankPosition")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RankReasonsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("RankScore")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("Relation")
                         .IsRequired()
                         .HasMaxLength(24)
                         .HasColumnType("TEXT");
+
+                    b.Property<double?>("RelationConfidence")
+                        .HasColumnType("REAL");
 
                     b.Property<DateTime>("RetrievedAt")
                         .HasColumnType("TEXT");
@@ -538,6 +736,18 @@ namespace ImageTo3D.Api.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SuggestedKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SuggestedRelation")
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SuggestedViewpoint")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("ThumbnailHeight")
                         .HasColumnType("INTEGER");
 
@@ -552,6 +762,9 @@ namespace ImageTo3D.Api.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("TEXT");
+
+                    b.Property<double?>("ViewpointConfidence")
+                        .HasColumnType("REAL");
 
                     b.Property<int?>("Width")
                         .HasColumnType("INTEGER");
@@ -617,8 +830,19 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.Property<int?>("InputHeight")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("InputViewpoint")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("InputViewpointConfidence")
+                        .HasColumnType("REAL");
+
                     b.Property<int?>("InputWidth")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastModelSearchJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("LastSearchJson")
                         .IsRequired()
@@ -640,6 +864,45 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.Property<string>("Query")
                         .IsRequired()
                         .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RankedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RankingMode")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RankingNote")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReconstructionDesignId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReconstructionExtraIdsJson")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReconstructionJobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReconstructionMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReconstructionModelId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReconstructionRoute")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReconstructionStartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReconstructionState")
+                        .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("SourceJobId")
@@ -673,6 +936,15 @@ namespace ImageTo3D.Api.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ImageTo3D.Api.Models.ModelCandidate", b =>
+                {
+                    b.HasOne("ImageTo3D.Api.Models.ReferenceSession", null)
+                        .WithMany("Models")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ImageTo3D.Api.Models.PartOperation", b =>
                 {
                     b.HasOne("ImageTo3D.Api.Models.PartDesignProject", null)
@@ -701,6 +973,8 @@ namespace ImageTo3D.Api.Data.Migrations
             modelBuilder.Entity("ImageTo3D.Api.Models.ReferenceSession", b =>
                 {
                     b.Navigation("Candidates");
+
+                    b.Navigation("Models");
                 });
 #pragma warning restore 612, 618
         }

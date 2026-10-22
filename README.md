@@ -4,6 +4,20 @@ Upload one photo of a Gunpla part, plastic model component or mechanical accesso
 **estimated** 3D mesh you can preview in the browser, scale in millimetres and download as GLB or
 STL for 3D printing.
 
+Around the generator the app follows *retrieval first, reuse second, reconstruction third*:
+
+* **Generate** (`#/`): one photo (plus optional photos of other sides with SF3D/SPAR3D) → mesh,
+  scaling, GLB/STL downloads, job history.
+* **References** (`#/references`): search free sources (Wikimedia Commons, Openverse, Internet
+  Archive) for pictures of the object, rank them with an optional local CLIP model, look for
+  existing 3D models (Sketchfab listings, your own GLB/STL), then **Get the geometry**: reuse an
+  accepted model, generate (with or without extra photos) or build by hand.
+* **Part design** (`#/designs`): break a model into editable parts (sheet, rod, tube, stock,
+  custom), split them with real capped plane cuts, add stock shapes with exact sizes, and export 1:1
+  drawings (SVG, PDF, DXF), BOM, cut list, STL and numbered release packages.
+
+Everything runs locally; no paid API, account or cloud service is needed.
+
 > **Read this first: what the output is and is not.** TripoSR reconstructs a *plausible* shape from
 > a single image. It cannot see the back, the inside, or anything hidden, so those parts are
 > invented. Holes, slots, peg joints, snap fits, wall thickness and small mechanical details are
@@ -17,13 +31,16 @@ STL for 3D printing.
 Browser ──► React + Three.js (Vite, :5173)
               │  /api only (same origin via proxy)
               ▼
-          ASP.NET Core API (:5080) ── SQLite (jobs) + local file store (artifacts)
+          ASP.NET Core API (:5080) ── SQLite (jobs, part designs, reference searches; EF Core migrations)
+              │                     ── local file stores (data/storage, designs, references, reference-cache)
+              │                     ── optional CLIP ViT-B/32 ONNX in process (reference ranking)
+              │                     ── HTTPS GET to public search APIs (Wikimedia, Openverse, Internet Archive, Sketchfab)
               │  HTTP, loopback (or API key + private network)
               ▼
           Inference service, ASP.NET Core + ONNX Runtime (:5090, 127.0.0.1)
               │  loads models once, single worker queue
               ▼
-          TripoSR (ONNX) + U²-Net background removal
+          TripoSR (ONNX) + U²-Net background removal   (or SF3D / SPAR3D, see Engines)
 ```
 
 ### Engines
@@ -70,13 +87,19 @@ geometry code is shared by the API and the inference service):
 ```
 src/
   frontend/                 React + TS + Vite (components/ hooks/ services/ pages/ types/)
-  backend/ImageTo3D.Api/    Controllers/ Services/ Models/ DTOs/ Data/ Configuration/
+                            pages: Workspace (generate), References, Part design
+  backend/ImageTo3D.Api/    Controllers/ Services/ (Jobs, PartDesign, References, Embeddings, Storage)
+                            Models/ DTOs/ Data/ (AppDbContext + Migrations) Configuration/
   inference/ImageTo3D.Inference/  Api/ Jobs/ Models/ (ONNX) Pipeline/ Cli/
-  shared/ImageTo3D.Core/    Geometry (marching cubes, GLB, STL, scaling), Imaging, Contracts
+  inference-sf3d/           optional Python service for Stable Fast 3D / SPAR3D
+  shared/ImageTo3D.Core/    Geometry (marching cubes, GLB, STL, scaling, topology, plane split),
+                            PartDesign (analysis, outlines, stock shapes), Drawing (SVG, PDF, DXF),
+                            Reconstruction (route planner), Embeddings (CLIP tokenizer/preprocessing),
+                            Imaging, Contracts
 tests/
   shared/  inference/  backend/      xUnit
   (frontend tests live next to the code in src/frontend/src/**/*.test.ts so Vitest resolves node_modules)
-models/   ONNX weights (downloaded)      scripts/   setup, model download, dev, test
+models/   ONNX weights (downloaded; models/clip optional)   scripts/   setup, model download, dev, test
 docs/api.md                              docker-compose.yml, Dockerfiles
 ```
 
@@ -88,9 +111,9 @@ docs/api.md                              docker-compose.yml, Dockerfiles
 | .NET SDK | 10.0 | `winget install Microsoft.DotNet.SDK.10` |
 | Node.js | 20.19+ / 22.12+ | for Vite 8 |
 | RAM | 16 GB | inference process peak working set measured at 5.75 GB (fp32 encoder ≈ 3.3 GB + activations) |
-| Disk | 5 GB | 3.5 GB of models |
+| Disk | 5 GB | 3.5 GB of models, plus ~155 MB for the optional CLIP model |
 | GPU | optional | CPU works; see [GPU](#gpu-cuda) |
-| Python | **not used** | |
+| Python | **not used** by the default TripoSR setup | only the optional SF3D/SPAR3D engine (`src/inference-sf3d`) needs it |
 
 Measured on the development machine (16 vCPU QEMU VM, 32 GB RAM, no GPU, CPU execution provider):
 model load ≈ 7 s; per image ≈ 30–35 s (encoder ≈ 8–10 s, 256³ density grid ≈ 21 s, background
@@ -171,13 +194,14 @@ and a correctly scaled model is still not dimensionally identical to the origina
 
 | Suite | Count | What it covers |
 |---|---|---|
-| `tests/shared` | 127 | perceptual hash (resize/JPEG tolerance, distinct pictures, transparency) and thumbnails, DXF R12 export (header, mm units, CUT layer closed contours at 1:1, annotation layer, text encoding), drawing revision label, cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
+| `tests/shared` | 170 | reconstruction planner (preference order, reuse blocks generation, listing-only models, closed-mesh preference, licence/unit warnings, multi-view always unsupported, hybrid engine and same-object requirements, cap on extra photos, unreachable engine, manual fallback), stock shapes (plate/block/rod/tube closed and outward, exact sizes, axes, polygon volumes, tube bore, usable plate outline, input validation), CLIP tokenizer (BPE merges, reference token IDs, truncation), CLIP preprocessing (normalisation, alpha, centre crop), bicubic resampling, cosine/softmax/clustering, perceptual hash (resize/JPEG tolerance, distinct pictures, transparency) and thumbnails, DXF R12 export (header, mm units, CUT layer closed contours at 1:1, annotation layer, text encoding), drawing revision label, cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
 | `tests/inference` | 23 | preprocessing ports, job state machine, internal API validation, artifact whitelist, API key, **real TripoSR smoke test** (chair → valid coloured mesh, Y-up proportions, density threshold sanity) and mid-inference cancellation |
-| `tests/backend` | 147 | reference search against a fake web (attribution and licence normalisation, previews and their size/host/redirect limits, cache and clearing, per-source failures with bounded retries, timeouts, rate limiting, empty and malformed answers, disabled sources, exact/near duplicates and input match, review decisions, manual pictures, sessions from jobs, owner isolation, no credentials sent, cancellation), exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
-| `src/frontend` | 64 | reference filters, licence tones, source outcomes, reference API calls and routes, drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
+| `tests/backend` | 202 | reconstruction decision through the API (route list, reuse of an accepted GLB/STL without inference and with provenance, generation refused while a model is accepted, hybrid extra photos sent to the engine, engine without extra photos, single-image failure and retry, deleted running job, manual geometry, owner isolation, non-reusable models), stock shapes (empty projects, exact specs, drawing and cut list, undo/redo, invalid input, isolation), extra photos stored and sent with their views, migration of existing projects to source kinds, real CLIP model (caption matching on chair/robot, resize/JPEG stability, zero-shot, missing files, disabled), ranking (signals, re-normalisation without embeddings, duplicates, input photo, groups, new viewpoint, accepted evidence, capped relation), model evaluation (listing only, downloadability, licence, face count, geometry, scale), ranking through the API with a fake embedder (fallback, failure isolation, embedding cache), Sketchfab search (licence mapping, age-restricted skipped, preview host rules, cache, failures, timeout, disabled), GLB/STL upload checks (closed/open, unitless STL, ASCII STL/OBJ/broken/oversized refused, duplicates, file download, review, removal, isolation), reference search against a fake web (attribution and licence normalisation, previews and their size/host/redirect limits, cache and clearing, per-source failures with bounded retries, timeouts, rate limiting, empty and malformed answers, disabled sources, exact/near duplicates and input match, review decisions, manual pictures, sessions from jobs, owner isolation, no credentials sent, cancellation), exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
+| `src/frontend` | 77 | reconstruction states and route actions, stock-shape form parsing, job route, ranking order, visual/viewpoint grouping, suggestion and confidence labels, model API calls, reference filters, licence tones, source outcomes, reference API calls and routes, drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
 
 Backend tests replace the inference HTTP client with an in-memory fake, so they need no model, and
-the reference-search HTTP handler with a fake web, so they never contact the internet.
+the reference-search HTTP handler with a fake web and CLIP with a deterministic fake, so they never
+contact the internet; the real-model tests run only when the model files are present.
 
 ## Configuration
 
@@ -196,7 +220,8 @@ variables (`Section__Key`). Key settings:
 | `Inference:ApiKey` | empty | required when not bound to loopback |
 | `Upload:MaxBytes` | 20 MB | also min/max dimension, max pixels |
 | `Upload:UploadsPerMinute` | 10 | per browser |
-| `Upload:MaxActiveJobsPerOwner` | 3 | |
+| `Upload:MaxActiveJobsPerOwner` | 3 | also applies to generations started from a reference search |
+| `Upload:MaxExtraImages` | 5 | extra photos per job (also the cap for the hybrid route) |
 | `InferenceService:BaseUrl` | `http://127.0.0.1:5090` | |
 | `InferenceService:GenerationTimeout` | 40 min | |
 | `Storage:RootPath` / `DatabasePath` | `data/` at repo root | outside any web root |
@@ -205,6 +230,8 @@ variables (`Section__Key`). Key settings:
 | `Storage:DesignRootPath` | `data/designs` | part-design projects; never touched by job retention |
 | `PartDesign:MaxSourceTriangles` | 2,000,000 | larger meshes are refused (analysis runs in the request) |
 | `PartDesign:MaxAnalysedParts` | 64 | further pieces are grouped as "fragments" |
+| `PartDesign:MaxPartsPerProject` / `MaxProjectsPerOwner` | 500 / 100 | parts count history (split, removed) too |
+| `PartDesign:MaxReleasesPerProject` | 50 | each release keeps its own zip |
 | `Storage:ReferenceRootPath` | `data/references` | reference searches (input photo, previews); never touched by job retention |
 | `Storage:ReferenceCachePath` | `data/reference-cache` | disposable download cache; safe to delete at any time |
 | `ReferenceSearch:WikimediaEnabled` / `OpenverseEnabled` / `InternetArchiveEnabled` | `true` | turn individual sources off |
@@ -214,12 +241,24 @@ variables (`Section__Key`). Key settings:
 | `ReferenceSearch:CacheTtl` | 7 days | cached search responses |
 | `ReferenceSearch:ThumbnailMaxSide` / `ThumbnailMaxBytes` | 640 px / 4 MB | only previews are downloaded |
 | `ReferenceSearch:NearDuplicateDistance` | 6 | dHash bits (of 64) for a near duplicate |
+| `Embeddings:Enabled` / `ModelDirectory` | `true` / `models/clip` | optional CLIP ranking; missing files mean basic ranking |
+| `Embeddings:IntraOpThreads` | 2 | CPU threads per embedding call |
+| `Embeddings:GroupThreshold` | 0.86 | mean cosine for pictures to share a visual group |
+| `ModelSearch:SketchfabEnabled` | `true` | anonymous Sketchfab listing search |
+| `ModelSearch:ResultsPerSearch` / `MaxModelsPerSession` | 24 / 100 | Sketchfab listings per search, model candidates per session |
+| `ModelSearch:MaxUploadBytes` / `MaxTriangles` | 64 MB / 2,000,000 | uploaded GLB/STL limits |
 
 The SQLite schema is managed by EF Core migrations (`src/backend/ImageTo3D.Api/Data/Migrations`),
 applied on start. A database created by an older version (before migrations, by `EnsureCreated`)
 is detected and baselined in place: its existing columns are checked and the first migration is
 recorded as applied, so existing jobs are kept. Add a migration with
 `dotnet ef migrations add <Name> --output-dir Data/Migrations` from the API project folder.
+
+**Back up `data/imageto3d.db` before starting a new version for the first time.** Migrations never
+delete data, but `AddReconstructionDecision` rebuilds the `PartDesignProjects` table (SQLite cannot
+make a column nullable in place) and EF runs part of that rebuild outside a transaction, so an
+interrupted start could leave it half applied. Existing projects become `source.kind =
+generation_job`.
 
 ## Reference search
 
@@ -249,35 +288,101 @@ downloads are cached (7 days, shared; `DELETE /api/references/cache` or **Clear 
 without touching sessions). You accept or reject each picture and can note what it is (photo,
 render, drawing) and how it relates to the object (same object, variant, similar but different).
 
+### Ranking and grouping
+
+Pictures are ranked after every search (and on **Re-rank**, which also uses the pictures you have
+accepted). With the optional CLIP model (`.\scripts\download-models.ps1 -Embeddings`, ~155 MB,
+MIT; see [models/README.md](models/README.md)) the score mixes: match with the search text,
+similarity to your input photo and to accepted pictures, whether it probably shows a side your
+photo does not, resolution, licence and source. Without the model only the non-visual signals are
+used and the page says so (`ranking.mode = basic`). Every picture shows its score, how much
+evidence it rests on (less without embeddings or an input photo) and the reasons. CLIP also
+suggests a viewpoint (front, back, side, top, three-quarter, or *uncertain*), a kind (photo,
+render, drawing) and a relation to your photo (same object?, variant?, similar but different?):
+these are advisory, the relation's confidence is capped at 50 %, and your own fields stay
+separate. Pictures whose embeddings are close form *visual groups* (same or closely related
+object); the grid can be grouped by visual group or by viewpoint. Embeddings are cached by the
+SHA-256 of the exact preview bytes and cleared with the other caches.
+
+### Existing 3D models
+
+**Search Sketchfab** lists models for the query (anonymous, no account; only listings and preview
+images are read). Downloading from Sketchfab needs a free account, so it is not done here: download
+a model yourself and **Check a model file** (binary GLB or binary STL, up to 64 MB) to have the mesh
+read and checked: triangles, separate pieces, closed or open surface, degenerate faces, declared
+size (glTF is metres; STL has no unit, so millimetres are assumed and flagged). Each candidate gets
+a score with reasons: visual similarity of its preview (or of a shaded render of the uploaded mesh)
+to your photo and accepted pictures, availability, whether the licence allows modified versions,
+and mesh workability. The model's name is never used. Listing-only candidates are marked
+`metadata_only` and get a low confidence.
+
 Limitations: duplicate detection finds copies of the same picture, not other photos of the same
-object; ranking by visual similarity, viewpoint grouping and 3D model search come with local
-embeddings (phase 5). A picture with an unknown licence is for personal reference only; check the
-source page before using any picture. Previews that are not PNG, JPEG or WebP (for example GIF)
-are listed without a preview.
+object (visual groups do that, approximately); nearly featureless pictures are compared by exact
+file only. Similarity scores and zero-shot suggestions are estimates from a general-purpose model,
+not identification: two different kits can look alike and the same kit can look different under
+other lighting. The calibration constants (`ReferenceRanker`) were chosen from observed CLIP
+cosines, not measured against labelled data. A picture or model with an unknown licence is for
+personal reference only; check the source page before using it. Previews that are not PNG, JPEG or
+WebP (for example GIF) are listed without a preview. OBJ, glTF with separate files and ASCII STL
+are not accepted yet.
+
+### Getting the geometry (reconstruction decision)
+
+**Get the geometry**, at the bottom of a reference search, lists every way to obtain geometry in
+order of preference (retrieval first, reuse second, generation third), says why each one is or is
+not possible, and recommends the first possible one:
+
+1. **Reuse the accepted model**: an accepted, uploaded GLB/STL opens in the part designer as is
+   (licence and attribution stay with the project and its export packages). No AI generation runs,
+   and while such a model is accepted the generation routes are refused.
+2. **Multi-view reconstruction**: always *not supported*. None of the installed engines builds
+   geometry from several photos.
+3. **Generate with extra photos** (hybrid): the input photo plus the accepted pictures you marked as
+   *same object* go to the existing engine as extra photos. Only Stable Fast 3D and SPAR3D use them,
+   and only to colour the hidden sides; the shape still comes from the one input photo.
+4. **Generate from the input photo**: the existing single-image pipeline, unchanged.
+5. **Build by hand from stock shapes**: an empty part design (also **New empty project** on the
+   part-design list). **Add a stock shape** creates plates, blocks, rods and tubes with exact
+   millimetre sizes; this works in any project, and undo removes them again.
+
+A started generation is a normal job (open it with **Open the generation**, `#/jobs/<id>`); the
+search follows its state (`completed`, `failed` with the reason, `cancelled`) and a failed route can
+be started again. Limitations: a reused STL is assumed to be millimetres; reused models are split
+into parts like generated ones (node, then connected piece) and their textures are not carried over;
+suggested viewpoints are not passed to the engine (it detects the side itself).
 
 ## Part design
 
-After a model is generated, **Open in part designer** copies it into a project and breaks it into
-parts (one per glTF node, then per connected piece; tiny floating pieces are grouped). Each part
+A project starts from a generated model (**Open in part designer** next to a job), from an existing
+model reused through a reference search (its licence and attribution stay with the project), or
+empty (**New empty project**, or *Build by hand* in a reference search). The source is copied into
+the project and broken into parts (one per glTF node, then per connected piece; tiny floating
+pieces are grouped). Each part
 gets a suggested fabrication category (sheet, rod, tube, custom 3D, or *needs review*), estimated
 dimensions from an oriented bounding box, and geometry checks (closed, manifold, degenerate faces).
 You can rename, recategorise, enter caliper measurements and manufacturing properties (material,
 thickness, diameters, cut length and angle, fit allowance, stock part details), duplicate, delete,
 and **split a part with a plane**: the mesh is really cut, both halves are capped (including cuts
-with holes, such as through a tube or a frame) and checked to be closed solids. Every edit can be
-undone and redone; projects persist and reopen at `#/designs/<id>`.
+with holes, such as through a tube or a frame) and checked to be closed solids. **Add a stock
+shape** adds a plate, block, rod or tube with exact millimetre sizes and position (closed solid,
+category and specification filled in: a plate is a sheet with its thickness, rods and tubes get
+their diameters and cut length). Every edit can be undone and redone; projects persist and reopen
+at `#/designs/<id>`.
 
-Limitations of this first version:
+Limitations:
 
-* Dimensions are estimates: they come from the AI model at the scale you set, not from the part.
-  Category suggestions are simple shape rules, always pending your review.
+* Dimensions measured on a model are estimates: they come from the AI model at the scale you set,
+  or from a reused file's declared units, not from the part. Only stock shapes have the sizes you
+  entered. Category suggestions are simple shape rules, always pending your review.
 * Planes are axis-aligned in the UI (the API accepts any orientation). Each half stays one part
   even if it has several separate pieces.
 * Parts keep geometry and vertex colours only; SF3D/SPAR3D textures are not carried into parts.
 * Splitting needs a closed surface where the plane crosses it. On an open mesh the cut is not
   capped; the split is refused unless you explicitly keep the open halves, which are then flagged.
+* Round stock shapes are 48-sided polygons whose corners lie on the nominal circle.
 * Not yet available: drawings for rods/tubes/curved parts, stock-length nesting for the cut list,
-  import of external GLB/OBJ/STL files.
+  OBJ import, part relationships and assembly checks (collisions, connections, exploded view).
+  External binary GLB/STL files enter through a reference search (see *Getting the geometry*).
 
 ### Fabrication drawings (sheet parts)
 
@@ -293,7 +398,8 @@ The smallest A4/A3 page that fits the part at full size is used; nothing is ever
 * Parts that are not flat (curved, bulky) are refused instead of drawn: an orthographic outline is
   not a cutting pattern. Bevelled or tapered edges are drawn at mid-thickness with a warning.
 * Parts larger than A3 at 1:1 are refused (split them first); tiled printing is not supported.
-* Dimensions are still those of the generated model at its estimated scale unless you confirmed them.
+* Dimensions are still those of the model at its estimated scale unless you confirmed them (a
+  plate added as a stock shape has exactly the sizes you entered).
 * **DXF** (R12, millimetres, 1:1) is offered too: layer `CUT` holds only the closed cutting contours,
   layer `ANNOTATION` the hole labels and a description you can switch off.
 
@@ -384,8 +490,24 @@ Verified on the development machine (Windows 10, CPU only):
 * Reference search against the live Wikimedia Commons, Openverse and Internet Archive APIs
   (2026-10-21, query "RX-78-2 gundam", temporary database): all three sources answered, 41 of 41
   previews downloaded, the repeated search was served from the cache.
+* Ranking with the real CLIP model on live results (2026-10-22, same query, temporary database):
+  Gundam statue and kit photos ranked first, venue photos (entrance, pavilion) last; query cosines
+  0.18–0.32. With one of the results as input photo it was recognised as the input itself (cosine
+  0.98, moved down) and other RX-78-2 pictures were suggested as variants. Sketchfab search
+  returned 24 listings (12 without a licence, shown as unknown); an uploaded unrelated TripoSR mesh
+  was checked (closed, 78,012 triangles, 100 × 68.5 × 77.5 mm) and ranked low as visually different.
+  Timings on this CPU-only machine: first search 11 s (model load, 41 previews), cached repeat 1.5 s.
+* Reconstruction decision against the real API on a copy of the development database
+  (2026-10-22): the migration kept all jobs and searches; with the inference service down the plan
+  recommended single-image generation (with a warning) and refused multi-view; reusing a real
+  TripoSR GLB (23,744 triangles) created a part design in about 5 s without starting a job;
+  manual geometry plus a 5/3 × 30 mm tube gave a closed, valid part and a package manifest.
 
 Not verified:
+
+* The Phase 6 screens (*Get the geometry*, *Add a stock shape*) in a browser; they are covered by
+  type checking, unit tests and the API tests only.
+* A hybrid generation with the real SF3D/SPAR3D engine (tested with the fake inference client).
 
 * Numerical parity between the ONNX export and the PyTorch model (needs Python, not allowed).
 * CUDA execution, Docker images and docker-compose.

@@ -26,9 +26,13 @@ public sealed partial record LicenseInfo(string Code, string Label, bool? Commer
         var text = (raw ?? "").Trim().ToLowerInvariant();
         var link = (url ?? "").Trim().ToLowerInvariant();
 
+        // Long names (Sketchfab: "CC Attribution-NonCommercial-ShareAlike") become short terms.
+        text = text.Replace("attribution", "by").Replace("non-commercial", "nc").Replace("noncommercial", "nc")
+            .Replace("share-alike", "sa").Replace("sharealike", "sa").Replace("noderivatives", "nd").Replace("noderivs", "nd");
+
         if (text is "own_work" or "own work")
             return new LicenseInfo("own_work", "Own photo", true, true, false);
-        if (text is "cc0" or "cc-zero" or "cc0 1.0" || link.Contains("publicdomain/zero"))
+        if (text.StartsWith("cc0", StringComparison.Ordinal) || text == "cc-zero" || link.Contains("publicdomain/zero"))
             return new LicenseInfo("cc0", "CC0 (public domain dedication)", true, true, false);
         if (text is "pdm" or "pd" or "public_domain" || text.StartsWith("public domain", StringComparison.Ordinal) || text.StartsWith("pd-", StringComparison.Ordinal) || link.Contains("publicdomain/mark"))
             return new LicenseInfo("public_domain", "Public domain", true, true, false);

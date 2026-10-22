@@ -35,10 +35,8 @@ public sealed partial class PartDesignService(
 
     public async Task<PartDesignProjectDto> CreateAsync(CreatePartDesignRequest request, CancellationToken cancellationToken)
     {
-        var o = options.Value;
         var ownerHash = owner.OwnerKeyHash;
-        if (await db.PartDesigns.CountAsync(p => p.OwnerKeyHash == ownerHash, cancellationToken) >= o.MaxProjectsPerOwner)
-            throw new ApiException(StatusCodes.Status409Conflict, "too_many_projects", $"You already have {o.MaxProjectsPerOwner} part-design projects. Delete one first.");
+        await EnsureProjectCapacityAsync(cancellationToken);
 
         var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == request.SourceJobId && j.OwnerKeyHash == ownerHash, cancellationToken)
                   ?? throw new ApiException(StatusCodes.Status404NotFound, "source_not_found", "Source model not found.");
@@ -58,19 +56,13 @@ public sealed partial class PartDesignService(
             throw new ApiException(StatusCodes.Status422UnprocessableEntity, "unsupported_source", "The model's mesh cannot be read: " + ex.Message);
         }
 
-        var totalTriangles = nodes.Sum(n => (long)n.Mesh.TriangleCount);
-        if (totalTriangles == 0)
-            throw new ApiException(StatusCodes.Status422UnprocessableEntity, "no_usable_geometry", "The model has no triangles.");
-        if (totalTriangles > o.MaxSourceTriangles)
-            throw new ApiException(StatusCodes.Status422UnprocessableEntity, "source_too_large", $"The model has {totalTriangles:N0} triangles; the limit for part design is {o.MaxSourceTriangles:N0}.");
-
         var now = time.GetUtcNow().UtcDateTime;
-        var baseName = Path.GetFileNameWithoutExtension(job.OriginalFileName);
         var project = new PartDesignProject
         {
             Id = Guid.NewGuid(),
             OwnerKeyHash = ownerHash,
-            Name = Truncate(request.Name?.Trim() is { Length: > 0 } n ? n : baseName, 100),
+            Name = Truncate(request.Name?.Trim() is { Length: > 0 } n ? n : Path.GetFileNameWithoutExtension(job.OriginalFileName), 100),
+            SourceKind = DesignSourceKinds.GenerationJob,
             SourceJobId = job.Id,
             SourceFileName = job.OriginalFileName,
             MmPerModelUnit = mmPerUnit,
@@ -83,7 +75,182 @@ public sealed partial class PartDesignService(
             new("scale_estimated", IssueSeverity.Info, $"Dimensions come from the generated model at its current scale (longest side {job.SizeMm?.MaxComponent:0.#} mm). They are estimates until you confirm measurements of the real part."),
         };
 
-        var files = new List<(string Name, byte[] Content)> { (DesignArtifactNames.SourceMesh, raw) };
+        await AnalyseAndSaveAsync(project, nodes, (DesignArtifactNames.SourceMesh, raw), issues, cancellationToken);
+        logger.LogInformation("Created part design {ProjectId} from job {JobId} with {PartCount} parts", project.Id, job.Id, project.Parts.Count);
+        return ToDto(project);
+    }
+
+    /// <summary>An existing model accepted in a reference search, as the reconstruction step hands it over.</summary>
+    /// <param name="Format">"glb" (metres by specification) or "stl" (no unit; millimetres assumed, Z-up converted to Y-up).</param>
+    public sealed record ReusedModel(byte[] Bytes, string Format, string Title, Guid SessionId, Guid ModelId, string License, string Attribution, string? ScaleStatus);
+
+    /// <summary>
+    /// Creates a project from a reused model, the same way as from a generated one (nodes and
+    /// connected pieces become parts). The file is kept byte for byte as the immutable source.
+    /// </summary>
+    public async Task<PartDesignProjectDto> CreateFromModelAsync(ReusedModel model, string? name, CancellationToken cancellationToken)
+    {
+        await EnsureProjectCapacityAsync(cancellationToken);
+        IReadOnlyList<GlbNodeMesh> nodes;
+        try
+        {
+            nodes = model.Format == "glb"
+                ? GlbReader.ReadNodes(model.Bytes)
+                : [new GlbNodeMesh(0, null, ZUpToYUp(StlReader.ReadBinary(model.Bytes)))];
+        }
+        catch (Exception ex) when (ex is InvalidDataException or FormatException or ArgumentException or InvalidOperationException or IndexOutOfRangeException or JsonException)
+        {
+            throw new ApiException(StatusCodes.Status422UnprocessableEntity, "unsupported_source", "The model's mesh cannot be read: " + ex.Message);
+        }
+
+        var now = time.GetUtcNow().UtcDateTime;
+        var fileName = Truncate(SafeFileStem(model.Title) + "." + model.Format, 128);
+        var project = new PartDesignProject
+        {
+            Id = Guid.NewGuid(),
+            OwnerKeyHash = owner.OwnerKeyHash,
+            Name = Truncate(Clean(name) ?? model.Title, 100),
+            SourceKind = DesignSourceKinds.ReferenceModel,
+            SourceReferenceSessionId = model.SessionId,
+            SourceModelCandidateId = model.ModelId,
+            SourceLicense = Truncate(model.License, 32),
+            SourceAttribution = Truncate(model.Attribution, 700),
+            SourceFileName = fileName,
+            MmPerModelUnit = model.Format == "glb" ? 1000 : 1,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        var issues = new List<GeometryIssue>
+        {
+            model.Format == "glb"
+                ? new("scale_from_file", IssueSeverity.Info, "Dimensions come from the file's declared units (glTF is in metres). They are estimates until you confirm measurements of the real part.")
+                : new("scale_assumed_mm", IssueSeverity.Warning, "STL files carry no unit: millimetres were assumed. Check the overall size before fabrication."),
+            new("reused_model", IssueSeverity.Info, $"Reused existing model: {model.Attribution}. It may not match the physical object exactly."),
+        };
+        if (model.ScaleStatus == "suspicious")
+            issues.Add(new("scale_suspicious", IssueSeverity.Warning, "The declared size is implausible for a model part; the file may use other units."));
+
+        var sourceFile = model.Format == "glb" ? DesignArtifactNames.SourceMesh : DesignArtifactNames.SourceStl;
+        await AnalyseAndSaveAsync(project, nodes, (sourceFile, model.Bytes), issues, cancellationToken);
+        logger.LogInformation("Created part design {ProjectId} from reused model {ModelId} with {PartCount} parts", project.Id, model.ModelId, project.Parts.Count);
+        return ToDto(project);
+    }
+
+    /// <summary>A project without a source mesh, for parts built from stock shapes.</summary>
+    public async Task<PartDesignProjectDto> CreateBlankAsync(CreateBlankPartDesignRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureProjectCapacityAsync(cancellationToken);
+        var now = time.GetUtcNow().UtcDateTime;
+        var project = new PartDesignProject
+        {
+            Id = Guid.NewGuid(),
+            OwnerKeyHash = owner.OwnerKeyHash,
+            Name = Truncate(Clean(request.Name) ?? "Hand-built design", 100),
+            SourceKind = DesignSourceKinds.None,
+            SourceFileName = "",
+            MmPerModelUnit = 1,
+            CreatedAt = now,
+            UpdatedAt = now,
+            IssuesJson = JsonSerializer.Serialize(new[]
+            {
+                new IssueDto("no_source", "info", "No source model: add parts from stock shapes with the sizes you want to build.", "analysis"),
+            }, Json),
+        };
+
+        db.PartDesigns.Add(project);
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Created empty part design {ProjectId}", project.Id);
+        return ToDto(project);
+    }
+
+    /// <summary>Adds a plate, block, rod or tube with exact sizes; reversible like any other edit.</summary>
+    public async Task<PartDesignProjectDto> AddPrimitiveAsync(Guid id, AddPrimitiveRequest request, CancellationToken cancellationToken)
+    {
+        var project = await LoadAsync(id, cancellationToken);
+        EnsureCapacity(project, 1);
+        var kind = request.Kind!;
+        Mesh mesh;
+        try
+        {
+            mesh = PrimitiveBuilder.Build(new PrimitiveSpec(
+                kind,
+                request.LengthMm,
+                request.WidthMm,
+                request.HeightMm,
+                request.ThicknessMm,
+                request.DiameterMm,
+                request.OuterDiameterMm,
+                request.InnerDiameterMm,
+                request.Axis is { Length: 1 } axis ? axis[0] : request.Axis is null ? '\0' : '?',
+                request.Center is { Length: 3 } c ? new Vector3D(c[0], c[1], c[2]) : default));
+        }
+        catch (InvalidPrimitiveException ex)
+        {
+            throw new ApiException(StatusCodes.Status400BadRequest, "invalid_primitive", ex.Message);
+        }
+
+        var now = time.GetUtcNow().UtcDateTime;
+        var files = new List<(string, byte[])>();
+        var label = kind switch
+        {
+            PrimitiveKinds.Plate => $"Plate {request.LengthMm:0.##} x {request.WidthMm:0.##} x {request.ThicknessMm:0.##}",
+            PrimitiveKinds.Box => $"Block {request.LengthMm:0.##} x {request.WidthMm:0.##} x {request.HeightMm:0.##}",
+            PrimitiveKinds.Rod => $"Rod Ø{request.DiameterMm:0.##} x {request.LengthMm:0.##}",
+            _ => $"Tube Ø{request.OuterDiameterMm:0.##}/{request.InnerDiameterMm:0.##} x {request.LengthMm:0.##}",
+        };
+        var part = CreatePart(project.Id, mesh, Truncate(Clean(request.Name) ?? label, 100), PartOrigins.Primitive, null, null, now, files)
+                   ?? throw new ApiException(StatusCodes.Status422UnprocessableEntity, "no_usable_geometry", "The shape has no usable geometry.");
+
+        // The sizes were entered, not measured: they are the specification of the stock to cut.
+        part.Category = PrimitiveKinds.Category(kind);
+        part.ReviewStatus = ReviewStatuses.UserConfirmed;
+        part.SortOrder = NextSortOrder(project);
+        part.Material = Clean(request.Material) ?? (kind == PrimitiveKinds.Box ? null : "Polystyrene (PS)");
+        part.ThicknessMm = kind == PrimitiveKinds.Plate ? request.ThicknessMm : null;
+        part.DiameterMm = kind == PrimitiveKinds.Rod ? request.DiameterMm : null;
+        part.OuterDiameterMm = kind == PrimitiveKinds.Tube ? request.OuterDiameterMm : null;
+        part.InnerDiameterMm = kind == PrimitiveKinds.Tube ? request.InnerDiameterMm : null;
+        part.CutLengthMm = kind is PrimitiveKinds.Rod or PrimitiveKinds.Tube ? request.LengthMm : null;
+        part.NeedsFurtherModelling = kind == PrimitiveKinds.Box;
+        project.Parts.Add(part);
+        db.DesignParts.Add(part);
+
+        foreach (var (name, content) in files)
+            await store.SaveAsync(project.Id, name, content, cancellationToken);
+        await RecordAsync(project, "add_primitive", $"Added '{Truncate(part.Name, 60)}'", [new PartChange(part.Id, null, Snapshot(part))], cancellationToken);
+        return ToDto(project);
+    }
+
+    private async Task EnsureProjectCapacityAsync(CancellationToken cancellationToken)
+    {
+        var max = options.Value.MaxProjectsPerOwner;
+        if (await db.PartDesigns.CountAsync(p => p.OwnerKeyHash == owner.OwnerKeyHash, cancellationToken) >= max)
+            throw new ApiException(StatusCodes.Status409Conflict, "too_many_projects", $"You already have {max} part-design projects. Delete one first.");
+    }
+
+    private static Mesh ZUpToYUp(Mesh mesh)
+    {
+        var p = (float[])mesh.Positions.Clone();
+        for (var i = 0; i < p.Length; i += 3)
+            (p[i + 1], p[i + 2]) = (p[i + 2], -p[i + 1]);
+        return new Mesh(p, mesh.Indices, mesh.Colors);
+    }
+
+    /// <summary>Splits the source into parts, then writes the files and the project (files are removed again if saving fails).</summary>
+    private async Task AnalyseAndSaveAsync(PartDesignProject project, IReadOnlyList<GlbNodeMesh> nodes, (string Name, byte[] Content) source, List<GeometryIssue> issues, CancellationToken cancellationToken)
+    {
+        var o = options.Value;
+        var totalTriangles = nodes.Sum(n => (long)n.Mesh.TriangleCount);
+        if (totalTriangles == 0)
+            throw new ApiException(StatusCodes.Status422UnprocessableEntity, "no_usable_geometry", "The model has no triangles.");
+        if (totalTriangles > o.MaxSourceTriangles)
+            throw new ApiException(StatusCodes.Status422UnprocessableEntity, "source_too_large", $"The model has {totalTriangles:N0} triangles; the limit for part design is {o.MaxSourceTriangles:N0}.");
+
+        var now = project.CreatedAt;
+        var baseName = Path.GetFileNameWithoutExtension(project.SourceFileName);
+        var mmPerUnit = project.MmPerModelUnit;
+        var files = new List<(string Name, byte[] Content)> { source };
         var sort = 0;
         foreach (var piece in Decompose(nodes, mmPerUnit, baseName, o, issues))
         {
@@ -115,9 +282,6 @@ public sealed partial class PartDesignService(
             await store.DeleteProjectAsync(project.Id, CancellationToken.None);
             throw;
         }
-
-        logger.LogInformation("Created part design {ProjectId} from job {JobId} with {PartCount} parts", project.Id, job.Id, project.Parts.Count);
-        return ToDto(project);
     }
 
     public async Task<PagedResult<PartDesignSummaryDto>> ListAsync(int page, int pageSize, CancellationToken cancellationToken)
@@ -128,7 +292,7 @@ public sealed partial class PartDesignService(
             .OrderByDescending(p => p.UpdatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(p => new PartDesignSummaryDto(p.Id, p.Name, p.SourceJobId, p.SourceFileName, p.Parts.Count(x => x.State == DesignPartState.Active), p.CreatedAt, p.UpdatedAt))
+            .Select(p => new PartDesignSummaryDto(p.Id, p.Name, p.SourceJobId, p.SourceKind, p.SourceFileName, p.Parts.Count(x => x.State == DesignPartState.Active), p.CreatedAt, p.UpdatedAt))
             .ToListAsync(cancellationToken);
         return new PagedResult<PartDesignSummaryDto>(items.Select(i => i with { CreatedAt = Utc(i.CreatedAt), UpdatedAt = Utc(i.UpdatedAt) }).ToList(), page, pageSize, total);
     }
@@ -807,6 +971,7 @@ public sealed partial class PartDesignService(
             project.Name,
             project.SourceJobId,
             project.SourceFileName,
+            SourceDto(project),
             project.MmPerModelUnit,
             "estimated",
             CoordinateSystem,
@@ -820,6 +985,9 @@ public sealed partial class PartDesignService(
             project.Operations.Any(o => !o.IsUndone),
             project.Operations.Any(o => o.IsUndone));
     }
+
+    private static DesignSourceDto SourceDto(PartDesignProject p) =>
+        new(p.SourceKind, p.SourceJobId, p.SourceReferenceSessionId, p.SourceModelCandidateId, p.SourceFileName, p.SourceLicense, p.SourceAttribution);
 
     private static DesignPartDto PartDto(DesignPart p, PartDesignProject project)
     {

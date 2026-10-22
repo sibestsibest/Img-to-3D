@@ -17,16 +17,19 @@ import type { ExtraPhoto, Job, ScaleAxis } from '../types/api'
 
 export function WorkspacePage({
   engine,
+  initialJobId = null,
   onOpenDesign,
   onOpenReferences,
 }: {
   engine: string | null
+  /** Job to show first (a generation started from a reference search). */
+  initialJobId?: string | null
   onOpenDesign: (projectId: string) => void
   onOpenReferences: (sessionId: string) => void
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [extras, setExtras] = useState<ExtraPhoto[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(initialJobId)
   const [cancelling, setCancelling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 

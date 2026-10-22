@@ -119,17 +119,27 @@ when the database is unavailable. No configuration, paths or secrets are exposed
 
 ## Part design (`/api/part-designs`)
 
-A project breaks a succeeded model into derived, individually editable parts. The job's raw mesh
-is copied into the project (`data/designs/<project>/source.glb`) and never modified; projects are
-not affected by job retention or job deletion. Owner isolation is the same as for jobs (other
-browsers get `404`). Lengths are millimetres; coordinates are the viewer's: Y-up, centred on X/Z,
-resting on Y = 0, at the job's scale when the project was created. Every mutating call returns the
-full project.
+A project breaks a model into derived, individually editable parts. The source is a succeeded
+generation job, an existing model accepted in a reference search (created through
+`POST /api/references/{id}/reconstruction`), or nothing at all (an empty project for stock
+shapes). The source file is copied into the project (`data/designs/<project>/source.glb`, or
+`source.stl` for a reused STL) and never modified; projects are not affected by job retention or
+job deletion. Owner isolation is the same as for jobs (other browsers get `404`). Lengths are
+millimetres; coordinates are the viewer's: Y-up, centred on X/Z, resting on Y = 0, at the job's
+scale when the project was created (a reused GLB uses its declared metres, a reused STL is assumed
+to be millimetres and converted from Z-up). Every mutating call returns the full project.
+
+Project: `{ id, name, sourceJobId (null unless made from a job), sourceFileName, source { kind:
+generation_job|reference_model|none, jobId, referenceSessionId, modelCandidateId, fileName,
+license, attribution }, mmPerModelUnit, scaleStatus, coordinateSystem, fitAllowanceMinMm,
+fitAllowanceMaxMm, createdAt, updatedAt, issues[], parts[], history[], canUndo, canRedo, units }`.
 
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/part-designs` | JSON `{ sourceJobId, name? }`. Splits the mesh into nodes and connected pieces (small pieces grouped as fragments) and suggests a category per part. `201`; `404 source_not_found`, `409 not_ready`, `410 artifact_missing`, `422 source_too_large` / `no_usable_geometry` |
-| GET | `/api/part-designs?page&pageSize` | Summaries with active part count |
+| POST | `/api/part-designs/blank` | JSON `{ name? }`. Empty project without a source (`source.kind` `none`), for parts built from stock shapes. `201`; `409 too_many_projects` |
+| POST | `/api/part-designs/{id}/parts/primitive` | JSON `{ kind: plate\|box\|rod\|tube, units: "mm", name?, material?, lengthMm, widthMm, heightMm, thicknessMm, diameterMm, outerDiameterMm, innerDiameterMm, axis?: x\|y\|z, center?: [x,y,z] }` (sizes 0.05–5000 mm; which ones are needed depends on the kind: plate = length, width, thickness with `axis` the thickness direction, default `y`; box = length X, height Y, width Z; rod = diameter, length with `axis` the length direction, default `x`; tube = outer and inner diameter, length). Adds a closed part (origin `primitive`, round shapes as 48-sided polygons on the nominal circle) whose category and specification follow the shape (plate → `sheet` with `thicknessMm`; rod/tube → `cutLengthMm` and diameters; box → `custom_3d`), review `user_confirmed`. Undoable (`add_primitive`). `400 invalid_primitive` (missing size, tube inner ≥ outer or wall < 0.05 mm) or validation errors |
+| GET | `/api/part-designs?page&pageSize` | Summaries with active part count and `sourceKind` |
 | GET | `/api/part-designs/{id}` | Project, parts (active and superseded), history (last 50), `canUndo` / `canRedo` |
 | PUT | `/api/part-designs/{id}` | `{ name, fitAllowanceMinMm, fitAllowanceMaxMm }` (not part of the undo history) |
 | DELETE | `/api/part-designs/{id}` | `204`; removes rows and files, never the source job |
@@ -162,8 +172,8 @@ revision label on drawings):
 
 ```
 manifest.json            schemaVersion 1; kind draft|release; revision; note; createdAt (UTC); units "mm";
-                         project { id, name, sourceJobId, sourceFileName, mmPerModelUnit, scaleStatus,
-                         historySequence, updatedAt }; parts[] { item, id, name, category, reviewStatus,
+                         project { id, name, sourceJobId, sourceFileName, source (as above),
+                         mmPerModelUnit, scaleStatus, historySequence, updatedAt }; parts[] { item, id, name, category, reviewStatus,
                          validationStatus, quantity, files[] }; files[] { path, kind, partId, bytes, sha256 };
                          warnings[] { code, severity, message, partId }
 README.txt               contents and printing instructions
@@ -198,10 +208,22 @@ Every mutating call returns the full session.
 | DELETE | `/api/references/{id}/candidates/{candidateId}` | Removes the candidate and its files; duplicates are regrouped |
 | GET | `/api/references/{id}/input?size=thumbnail\|full` | Input photo: JPEG preview or upright PNG |
 | GET | `/api/references/{id}/candidates/{candidateId}/thumbnail` | Stored JPEG preview (longest side ≤ `ThumbnailMaxSide`), `404` when none |
-| DELETE | `/api/references/cache` | Clears the shared, disposable caches: `{ searchEntries, files, bytes }`. Sessions keep their pictures |
+| DELETE | `/api/references/cache` | Clears the shared, disposable caches: `{ searchEntries, files, bytes, embeddings }`. Sessions keep their pictures |
+| GET | `/api/references/capabilities` | `{ embeddings: { available, model, reason }, imageSources[], modelSources[] }`; loads the CLIP model on first call |
+| POST | `/api/references/{id}/rank` | Recompute ranking, groups and suggestions of pictures and models (uses accepted pictures). Also done automatically after a search, a manual picture, a removal and a model search or upload |
+| POST | `/api/references/{id}/models/search` | JSON `{ query? }`. Sketchfab listings (anonymous); always `200`, the outcome is in `lastModelSearch`; `400 query_required` |
+| POST | `/api/references/{id}/models` | Multipart `file` (binary GLB or binary STL, format detected from the content) plus optional `title`, `author`, `pageUrl`, `license`, `licenseUrl`. Checked geometrically. `400 unsupported_model` (ASCII STL, OBJ, others) / `invalid_license`, `409 already_added` / `session_full`, `413 file_too_large`, `422 unreadable_model` / `invalid_mesh` / `model_too_large` |
+| PUT | `/api/references/{id}/models/{modelId}` | `{ decision: pending\|accepted\|rejected, note? }` |
+| DELETE | `/api/references/{id}/models/{modelId}` | Removes the candidate, its preview and uploaded file |
+| GET | `/api/references/{id}/models/{modelId}/thumbnail` | JPEG preview (the listing's image, or a shaded render of an uploaded mesh) |
+| GET | `/api/references/{id}/models/{modelId}/file` | The uploaded GLB (`model/gltf-binary`) or STL (`model/stl`), byte for byte |
+| GET | `/api/references/{id}/reconstruction` | The reconstruction decision (below). Brings the state of a started generation up to date with its job |
+| POST | `/api/references/{id}/reconstruction` | JSON `{ route, modelId?, name? }` starts a route. `reuse_existing_model`: part design from the accepted uploaded model (`modelId` defaults to the plan's), no inference. `manual_geometry_required`: empty part design. `single_image_reconstruction` / `hybrid_reconstruction`: a generation job from the session's input photo (hybrid adds the accepted `same_object` pictures as extra photos, view `auto`, at most `Upload:MaxExtraImages`), with the usual upload limits and queue. Returns the decision. `400 invalid_route`, `404 not_found` (model), `409 route_unsupported` (multi-view) / `route_unavailable` (blockers in the message) / `reconstruction_in_progress` / `model_not_reusable`, `410 artifact_missing`, `429 too_many_active_jobs` / rate limit |
 
 Session: `{ id, name, query, sourceJobId, hasInputImage, inputWidth, inputHeight, createdAt,
-updatedAt, lastSearchedAt, lastSearch[], manualLinks[], candidates[] }`.
+updatedAt, lastSearchedAt, lastSearch[], manualLinks[], candidates[], ranking, lastModelSearch[],
+models[] }`. `ranking`: `{ mode: embeddings|basic|null, rankedAt, note, inputViewpoint, embeddingModel }`
+(`note` says why ranking is basic or partial, e.g. the model is not installed).
 
 `lastSearch[]`: `{ source, name, status, hits, added, fromCache, message }` with `status` ∈ `ok,
 empty, failed, timeout, rate_limited, disabled`. Failures are not cached; results (including empty
@@ -221,6 +243,50 @@ licence is unknown. `warnings[]` are `{ code, severity, message, source }` with 
 `duplicate`, `matches_input`. Previews are only downloaded over HTTPS from the source's own image
 hosts (`skipped` otherwise); a duplicate is a copy of the same picture, not another photo of the
 same object.
+
+Candidate `ranking`: `{ position (1 = best), score (0..1), confidence (0..1), group, querySimilarity,
+inputSimilarity, viewpoint, kind, relation, reasons[] }`. `viewpoint`, `kind` and `relation` are
+`{ label, confidence }` suggestions (`uncertain` when no label is clearly ahead; relation confidence
+≤ 0.5), never assertions. `reasons[]`: `{ code, message, effect: +|-|0 }`, codes `query_match`,
+`query_weak`, `looks_like_input`, `unlike_input`, `like_accepted`, `new_view`, `same_view`,
+`low_resolution`, `high_resolution`, `licence_unknown`, `licence_restricted`, `duplicate`,
+`is_input`, `no_visual`.
+
+Model candidate: `{ id, origin: search|manual, source: sketchfab|upload, sourceName, title, pageUrl,
+author, license, attribution, query, retrievedAt, isDownloadable, faceCount, vertexCount,
+fileBytes, hasThumbnail, downloadStatus, format: glb|stl|null, evaluationStatus:
+metadata_only|geometry_checked, score, confidence, visualSimilarity, reasons[], geometry, decision,
+note, warnings[] }`; `geometry` (uploads): `{ triangles, components, closed, boundaryEdges,
+nonManifoldEdges, degenerateTriangles, sizeXMm, sizeYMm, sizeZMm, scaleStatus:
+plausible|unitless|suspicious }`. Model reason codes: `looks_like_object`, `looks_different`,
+`looks_somewhat`, `query_weak`, `downloadable`, `not_downloadable`, `no_derivatives`,
+`licence_unknown`, `very_coarse`, `dense_mesh`, `closed`, `open`, `degenerate`, `fragmented`,
+`components`, `scale_plausible`, `scale_unitless`, `scale_suspicious`, `no_visual`, `listing_only`.
+Models are listed best score first.
+
+Reconstruction decision: `{ state, route, startedAt, jobId, jobStatus, designId, modelId,
+extraReferenceIds[], message, recommended, routes[], notes[], engine, engineReachable }`. `routes[]`
+is every route in preference order, `{ route, availability: available|unavailable|unsupported,
+recommended, reasons[] { code, severity: info|warning|blocker, message }, modelId, extraPhotos }`:
+
+1. `reuse_existing_model`: needs an accepted upload whose geometry was checked (closed meshes, then
+   the highest score, are preferred). Search listings have no file (`listing_only`). Warnings:
+   `model_open`, `model_unitless`, `model_scale_suspicious`, `model_licence_unknown`,
+   `model_no_derivatives`. While it is available, both generation routes are blocked
+   (`existing_model_accepted`): no heavy inference runs when a suitable model is accepted.
+2. `multi_view_reconstruction`: always `unsupported` (`no_multiview_engine`); no installed engine
+   reconstructs geometry from several photos.
+3. `hybrid_reconstruction`: input photo, at least one accepted picture marked `same_object` (not a
+   duplicate, not the input itself) and an engine that uses extra photos (`StableFast3D`, `SPAR3D`).
+   The shape still comes from the input photo; the extra photos colour the hidden sides.
+4. `single_image_reconstruction`: input photo; `engine_unreachable` is only a warning.
+5. `manual_geometry_required`: always available.
+
+`recommended` is the first available route. `state`: `reference_search` or
+`model_candidate_review` (model candidates pending) before anything starts; the route while a
+generation runs; `manual_geometry_required` after starting manual geometry; then `completed`,
+`failed` (with `message`, also when a running job was deleted) or `cancelled`. A finished or failed
+route can be started again.
 
 ## Internal inference API (`http://127.0.0.1:5090`)
 
