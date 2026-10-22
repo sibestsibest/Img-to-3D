@@ -2,7 +2,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseRoute, routeHash } from '../hooks/useHashRoute'
 import type { ReferenceCandidate, ReferenceLicense, SourceSearchResult } from '../types/references'
 import { referenceApi, urls } from './apiClient'
-import { allSourcesUnavailable, countByDecision, describeOutcome, filterCandidates, licenseTone } from './referenceState'
+import {
+  allSourcesUnavailable,
+  confidenceLabel,
+  countByDecision,
+  describeOutcome,
+  filterCandidates,
+  formatBytes,
+  groupCandidates,
+  licenseTone,
+  percent,
+  sortCandidates,
+  suggestionLabel,
+} from './referenceState'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -113,5 +125,65 @@ describe('reference api', () => {
   it('builds relative preview URLs', () => {
     expect(urls.referenceThumbnail('s 1', 'c1')).toBe('/api/references/s%201/candidates/c1/thumbnail')
     expect(urls.referenceInput('s1', 'full')).toBe('/api/references/s1/input?size=full')
+  })
+})
+
+describe('ranking display', () => {
+  const ranked = (id: string, position: number | null, group: number | null, viewpoint: string | null): ReferenceCandidate =>
+    ({
+      id,
+      decision: 'pending',
+      duplicateOfId: null,
+      ranking: { position, group, viewpoint: viewpoint ? { label: viewpoint, confidence: 0.6 } : null, reasons: [] },
+    }) as unknown as ReferenceCandidate
+  const list = [ranked('a', 3, 2, 'back'), ranked('b', 1, 1, 'front'), ranked('c', null, null, null), ranked('d', 2, 2, 'front')]
+
+  it('sorts by rank with unranked pictures last, or keeps discovery order', () => {
+    expect(sortCandidates(list, 'rank').map((c) => c.id)).toEqual(['b', 'd', 'a', 'c'])
+    expect(sortCandidates(list, 'found').map((c) => c.id)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('groups by visual group or viewpoint in display order', () => {
+    const byGroup = groupCandidates(sortCandidates(list, 'rank'), 'group')
+    expect(byGroup.map((s) => [s.title, s.items.map((c) => c.id)])).toEqual([
+      ['Visual group 1', ['b']],
+      ['Visual group 2', ['d', 'a']],
+      ['Not compared visually', ['c']],
+    ])
+    expect(groupCandidates(list, 'viewpoint').map((s) => s.title)).toEqual(['Back', 'Front', 'Viewpoint unknown'])
+    expect(groupCandidates(list, 'none')).toHaveLength(1)
+  })
+
+  it('labels suggestions and confidence without overclaiming', () => {
+    expect(suggestionLabel('same_object')).toBe('same object?')
+    expect(suggestionLabel('three_quarter')).toBe('three-quarter')
+    expect(confidenceLabel(1)).toBe('more evidence')
+    expect(confidenceLabel(0.25)).toBe('little evidence')
+    expect(confidenceLabel(null)).toBe('not ranked')
+    expect(percent(0.456)).toBe('46%')
+    expect(percent(null)).toBe('–')
+    expect(formatBytes(1234567)).toBe('1.2 MB')
+    expect(formatBytes(2048)).toBe('2 KB')
+  })
+})
+
+describe('model api', () => {
+  const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+  it('uploads a model file with its fields and calls rank and model search', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => json({ id: 's1' }))
+    await referenceApi.addModel('s1', { file: new File(['glTF'], 'a.glb'), license: 'cc-by', author: ' ' })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/references/s1/models')
+    const body = init!.body as FormData
+    expect(body.get('license')).toBe('cc-by')
+    expect(body.has('author')).toBe(false)
+    expect(body.get('file')).toBeInstanceOf(File)
+
+    await referenceApi.rank('s1')
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/references/s1/rank')
+    await referenceApi.searchModels('s1', 'zaku')
+    expect(JSON.parse(fetchMock.mock.calls[2][1]!.body as string)).toEqual({ query: 'zaku' })
+    expect(urls.modelFile('s1', 'm1')).toBe('/api/references/s1/models/m1/file')
   })
 })

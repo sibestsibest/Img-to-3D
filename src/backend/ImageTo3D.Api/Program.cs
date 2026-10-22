@@ -4,6 +4,7 @@ using ImageTo3D.Api.Data;
 using ImageTo3D.Api.Services;
 using ImageTo3D.Api.Services.Inference;
 using ImageTo3D.Api.Services.PartDesign;
+using ImageTo3D.Api.Services.Embeddings;
 using ImageTo3D.Api.Services.References;
 using ImageTo3D.Api.Services.Storage;
 using ImageTo3D.Core.Hosting;
@@ -19,6 +20,8 @@ builder.Services.AddOptions<UploadOptions>().Bind(builder.Configuration.GetSecti
 builder.Services.AddOptions<InferenceClientOptions>().Bind(builder.Configuration.GetSection(InferenceClientOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<ModelOutputOptions>().Bind(builder.Configuration.GetSection(ModelOutputOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<PartDesignOptions>().Bind(builder.Configuration.GetSection(PartDesignOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<EmbeddingOptions>().Bind(builder.Configuration.GetSection(EmbeddingOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<ModelSearchOptions>().Bind(builder.Configuration.GetSection(ModelSearchOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<ReferenceSearchOptions>().Bind(builder.Configuration.GetSection(ReferenceSearchOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 
 builder.Services.AddDbContext<AppDbContext>((sp, options) =>
@@ -44,6 +47,8 @@ builder.Services.AddSingleton<ReferenceHttp>();
 builder.Services.AddSingleton<IReferenceSource, WikimediaCommonsSource>();
 builder.Services.AddSingleton<IReferenceSource, OpenverseSource>();
 builder.Services.AddSingleton<IReferenceSource, InternetArchiveSource>();
+builder.Services.AddSingleton<SketchfabSource>();
+builder.Services.AddSingleton<IImageEmbedder, ClipEmbedder>();
 builder.Services.AddScoped<ReferenceService>();
 builder.Services.AddHostedService<GenerationWorker>();
 builder.Services.AddHostedService<RetentionCleanupService>();

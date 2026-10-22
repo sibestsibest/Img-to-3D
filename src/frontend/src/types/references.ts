@@ -66,6 +66,7 @@ export interface ReferenceCandidate {
   relation: ReferenceRelation
   note: string | null
   warnings: ReferenceIssue[]
+  ranking: CandidateRanking
 }
 
 export interface SourceSearchResult {
@@ -98,6 +99,9 @@ export interface ReferenceSession {
   lastSearch: SourceSearchResult[]
   manualLinks: ManualSearchLink[]
   candidates: ReferenceCandidate[]
+  ranking: SessionRanking
+  lastModelSearch: SourceSearchResult[]
+  models: ModelCandidate[]
 }
 
 export interface ReferenceSessionSummary {
@@ -131,4 +135,98 @@ export interface ClearCacheResult {
   searchEntries: number
   files: number
   bytes: number
+  embeddings: number
+}
+
+/** Advisory label with its probability or capped confidence; `uncertain` when no label is clearly ahead. */
+export interface ZeroShot {
+  label: string
+  confidence: number
+}
+
+export interface RankReason {
+  code: string
+  message: string
+  effect: '+' | '-' | '0'
+}
+
+/** Ranking of one picture: all values are advisory, never a claim that two pictures show the same object. */
+export interface CandidateRanking {
+  position: number | null
+  score: number | null
+  confidence: number | null
+  group: number | null
+  querySimilarity: number | null
+  inputSimilarity: number | null
+  viewpoint: ZeroShot | null
+  kind: ZeroShot | null
+  relation: ZeroShot | null
+  reasons: RankReason[]
+}
+
+export interface SessionRanking {
+  /** `embeddings` (visual and query similarity used) or `basic`; null before the first ranking. */
+  mode: 'embeddings' | 'basic' | null
+  rankedAt: string | null
+  note: string | null
+  inputViewpoint: ZeroShot | null
+  embeddingModel: string
+}
+
+export interface ModelGeometry {
+  triangles: number
+  components: number
+  closed: boolean
+  boundaryEdges: number
+  nonManifoldEdges: number
+  degenerateTriangles: number
+  sizeXMm: number
+  sizeYMm: number
+  sizeZMm: number
+  scaleStatus: 'plausible' | 'unitless' | 'suspicious'
+}
+
+export interface ModelCandidate {
+  id: string
+  origin: 'search' | 'manual'
+  source: string
+  sourceName: string
+  title: string
+  pageUrl: string | null
+  author: string | null
+  license: ReferenceLicense
+  attribution: string
+  query: string | null
+  retrievedAt: string
+  isDownloadable: boolean | null
+  faceCount: number | null
+  vertexCount: number | null
+  fileBytes: number | null
+  hasThumbnail: boolean
+  downloadStatus: DownloadStatus
+  format: 'glb' | 'stl' | null
+  /** `metadata_only`: judged from the listing; `geometry_checked`: the uploaded mesh was analysed. */
+  evaluationStatus: 'metadata_only' | 'geometry_checked'
+  score: number | null
+  confidence: number | null
+  visualSimilarity: number | null
+  reasons: RankReason[]
+  geometry: ModelGeometry | null
+  decision: ReferenceDecision
+  note: string | null
+  warnings: ReferenceIssue[]
+}
+
+export interface ReferenceCapabilities {
+  embeddings: { available: boolean; model: string; reason: string | null }
+  imageSources: ReferenceSource[]
+  modelSources: ReferenceSource[]
+}
+
+export interface ModelUpload {
+  file: File
+  title?: string
+  author?: string
+  pageUrl?: string
+  license?: string
 }

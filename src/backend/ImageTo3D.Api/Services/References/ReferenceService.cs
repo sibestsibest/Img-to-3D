@@ -4,6 +4,7 @@ using ImageTo3D.Api.Configuration;
 using ImageTo3D.Api.Data;
 using ImageTo3D.Api.DTOs;
 using ImageTo3D.Api.Models;
+using ImageTo3D.Api.Services.Embeddings;
 using ImageTo3D.Api.Services.Storage;
 using ImageTo3D.Core.Imaging;
 using Microsoft.EntityFrameworkCore;
@@ -33,17 +34,23 @@ public sealed class AddReferenceImageForm
 /// retries and cache, so one failing source never fails the search and the session stays usable
 /// when all of them are down (manual links and uploads always work). Search results keep their
 /// source, author, licence and retrieval time; only small previews are downloaded, from hosts the
-/// adapter trusts. Pictures are fingerprinted (SHA-256 and dHash) to flag duplicates.
+/// adapter trusts. Pictures are fingerprinted (SHA-256 and dHash) to flag duplicates, and ranked
+/// (ReferenceService.Ranking.cs); existing 3D models are searched and evaluated
+/// (ReferenceService.Models.cs).
 /// </summary>
-public sealed class ReferenceService(
+public sealed partial class ReferenceService(
     AppDbContext db,
     IArtifactStore jobStore,
     IReferenceArtifactStore store,
     ReferenceDownloadCache cache,
     ReferenceHttp http,
     IEnumerable<IReferenceSource> sources,
+    SketchfabSource sketchfab,
+    IImageEmbedder embedder,
     IOwnerAccessor owner,
     IOptions<ReferenceSearchOptions> options,
+    IOptions<EmbeddingOptions> embeddingOptions,
+    IOptions<ModelSearchOptions> modelOptions,
     IOptions<UploadOptions> uploadOptions,
     TimeProvider time,
     ILogger<ReferenceService> logger)
@@ -266,6 +273,7 @@ public sealed class ReferenceService(
             async (item, token) => await DownloadPreviewAsync(session.Id, item.Candidate, item.Source, token));
 
         AssignDuplicates(session);
+        await RankSessionAsync(session, cancellationToken);
 
         var outcomes = runs.Select(r => new SourceSearchResultDto(
             r.Source.Id,
@@ -353,18 +361,26 @@ public sealed class ReferenceService(
 
     private async Task DownloadPreviewAsync(Guid sessionId, ReferenceCandidate candidate, IReferenceSource source, CancellationToken cancellationToken)
     {
-        var o = options.Value;
-        if (candidate.ThumbnailUrl is not { } url || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
-        {
-            SetDownload(candidate, DownloadStatuses.Skipped, "The source offers no preview for this item.");
-            return;
-        }
+        var preview = await FetchPreviewAsync(candidate.ThumbnailUrl, source.IsTrustedImageHost, source.Name, cancellationToken);
+        if (preview.Image is null)
+            SetDownload(candidate, preview.Status, preview.Error);
+        else
+            await StorePictureAsync(sessionId, candidate, preview.Bytes!, preview.Image, cancellationToken);
+    }
 
-        if (!source.IsTrustedImageHost(uri))
-        {
-            SetDownload(candidate, DownloadStatuses.Skipped, $"Preview not downloaded: {uri.Host} is not a host {source.Name} serves images from.");
-            return;
-        }
+    private sealed record Preview(byte[]? Bytes, RgbaImage? Image, string Status, string? Error);
+
+    /// <summary>
+    /// Downloads (or reads from the shared cache) a preview image from a host the source trusts and
+    /// decodes it. Never throws for a bad preview: the outcome is reported as skipped or failed.
+    /// </summary>
+    private async Task<Preview> FetchPreviewAsync(string? url, Func<Uri, bool> trusted, string sourceName, CancellationToken cancellationToken)
+    {
+        var o = options.Value;
+        if (url is null || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return new Preview(null, null, DownloadStatuses.Skipped, "The source offers no preview for this item.");
+        if (!trusted(uri))
+            return new Preview(null, null, DownloadStatuses.Skipped, $"Preview not downloaded: {uri.Host} is not a host {sourceName} serves images from.");
 
         try
         {
@@ -373,23 +389,23 @@ public sealed class ReferenceService(
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(o.ThumbnailTimeout);
-                bytes = await http.DownloadImageAsync(uri, source.IsTrustedImageHost, o.ThumbnailMaxBytes, timeout.Token);
+                bytes = await http.DownloadImageAsync(uri, trusted, o.ThumbnailMaxBytes, timeout.Token);
                 await cache.WriteAsync(url, bytes, cancellationToken);
             }
 
-            await StorePictureAsync(sessionId, candidate, bytes, ImageDecoder.Decode(bytes, PreviewLimits).Image, cancellationToken);
+            return new Preview(bytes, ImageDecoder.Decode(bytes, PreviewLimits).Image, DownloadStatuses.Downloaded, null);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            SetDownload(candidate, DownloadStatuses.Failed, $"The preview did not arrive within {o.ThumbnailTimeout.TotalSeconds:0} s.");
+            return new Preview(null, null, DownloadStatuses.Failed, $"The preview did not arrive within {o.ThumbnailTimeout.TotalSeconds:0} s.");
         }
         catch (ReferenceFetchException ex)
         {
-            SetDownload(candidate, DownloadStatuses.Failed, ex.Message);
+            return new Preview(null, null, DownloadStatuses.Failed, ex.Message);
         }
         catch (ImageValidationException ex)
         {
-            SetDownload(candidate, DownloadStatuses.Failed, "The preview is not a usable PNG, JPEG or WebP image: " + ex.Message);
+            return new Preview(null, null, DownloadStatuses.Failed, "The preview is not a usable PNG, JPEG or WebP image: " + ex.Message);
         }
     }
 
@@ -472,6 +488,7 @@ public sealed class ReferenceService(
         await store.SaveAsync(session.Id, ReferenceArtifactNames.FullImage(candidate.Id), ImageDecoder.EncodePng(decoded.Image), cancellationToken);
         db.ReferenceCandidates.Add(candidate); // EF fix-up also puts it in session.Candidates
         AssignDuplicates(session);
+        await RankSessionAsync(session, cancellationToken);
         session.UpdatedAt = candidate.RetrievedAt;
         try
         {
@@ -516,6 +533,7 @@ public sealed class ReferenceService(
         session.Candidates.Remove(candidate);
         db.ReferenceCandidates.Remove(candidate);
         AssignDuplicates(session);
+        await RankSessionAsync(session, cancellationToken);
         session.UpdatedAt = time.GetUtcNow().UtcDateTime;
         await db.SaveChangesAsync(cancellationToken);
         await store.DeleteAsync(session.Id, ReferenceArtifactNames.Thumbnail(candidate.Id), cancellationToken);
@@ -548,13 +566,14 @@ public sealed class ReferenceService(
         new(await store.OpenReadAsync(sessionId, fileName, cancellationToken)
             ?? throw new ApiException(StatusCodes.Status410Gone, "artifact_missing", "The file is no longer available."), contentType);
 
-    /// <summary>Drops cached search responses and downloads (shared, disposable). Session data is not touched.</summary>
+    /// <summary>Drops cached search responses, downloads and image embeddings (shared, disposable). Session data is not touched.</summary>
     public async Task<ClearReferenceCacheDto> ClearCacheAsync(CancellationToken cancellationToken)
     {
         var entries = await db.ReferenceSearchCache.ExecuteDeleteAsync(cancellationToken);
+        var embeddings = await db.ImageEmbeddingCache.ExecuteDeleteAsync(cancellationToken);
         var (files, bytes) = cache.Clear();
-        logger.LogInformation("Cleared reference cache: {Entries} search entries, {Files} files ({Bytes} bytes)", entries, files, bytes);
-        return new ClearReferenceCacheDto(entries, files, bytes);
+        logger.LogInformation("Cleared reference cache: {Entries} search entries, {Embeddings} embeddings, {Files} files ({Bytes} bytes)", entries, embeddings, files, bytes);
+        return new ClearReferenceCacheDto(entries, files, bytes, embeddings);
     }
 
     // ---- Helpers ----
@@ -563,7 +582,7 @@ public sealed class ReferenceService(
     {
         IQueryable<ReferenceSession> query = db.ReferenceSessions;
         if (includeCandidates)
-            query = query.Include(s => s.Candidates);
+            query = query.Include(s => s.Candidates).Include(s => s.Models).AsSplitQuery();
         return await query.FirstOrDefaultAsync(s => s.Id == id && s.OwnerKeyHash == owner.OwnerKeyHash, cancellationToken)
                ?? throw new ApiException(StatusCodes.Status404NotFound, "not_found", "Reference search not found.");
     }
@@ -610,7 +629,15 @@ public sealed class ReferenceService(
             s.LastSearchedAt is { } t ? Utc(t) : null,
             lastSearch,
             ManualSearchLinks.For(s.Query).Select(l => new ManualSearchLinkDto(l.Name, l.Url, l.Kind)).ToList(),
-            s.Candidates.OrderBy(c => c.SortOrder).Select(ToDto).ToList());
+            s.Candidates.OrderBy(c => c.SortOrder).Select(ToDto).ToList(),
+            new SessionRankingDto(
+                s.RankingMode,
+                s.RankedAt is { } r ? Utc(r) : null,
+                s.RankingNote,
+                s.InputViewpoint is { } v ? new ZeroShotDto(v, s.InputViewpointConfidence ?? 0) : null,
+                embedder.Status.Model),
+            JsonSerializer.Deserialize<List<SourceSearchResultDto>>(s.LastModelSearchJson, Json) ?? [],
+            s.Models.OrderByDescending(m => m.Score ?? -1).ThenBy(m => m.SortOrder).Select(ToDto).ToList());
     }
 
     private ReferenceCandidateDto ToDto(ReferenceCandidate c)
@@ -663,8 +690,24 @@ public sealed class ReferenceService(
             c.ImageKind,
             c.Relation,
             c.Note,
-            warnings);
+            warnings,
+            new CandidateRankingDto(
+                c.RankPosition,
+                c.RankScore,
+                c.RankConfidence,
+                c.GroupIndex,
+                c.QuerySimilarity,
+                c.InputSimilarity,
+                Suggestion(c.SuggestedViewpoint, c.ViewpointConfidence),
+                Suggestion(c.SuggestedKind, c.KindConfidence),
+                Suggestion(c.SuggestedRelation, c.RelationConfidence),
+                Reasons(c.RankReasonsJson)));
     }
+
+    private static ZeroShotDto? Suggestion(string? label, double? confidence) => label is null ? null : new ZeroShotDto(label, confidence ?? 0);
+
+    private static IReadOnlyList<RankReasonDto> Reasons(string? json) =>
+        json is null ? [] : JsonSerializer.Deserialize<List<RankReasonDto>>(json, Json) ?? [];
 
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 

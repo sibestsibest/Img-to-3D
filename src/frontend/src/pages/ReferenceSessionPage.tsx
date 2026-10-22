@@ -2,16 +2,23 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { AddPictureForm } from '../components/references/AddPictureForm'
 import { CandidateCard } from '../components/references/CandidateCard'
+import { ModelCandidates } from '../components/references/ModelCandidates'
 import { referenceApi, urls } from '../services/apiClient'
 import {
   allSourcesUnavailable,
   countByDecision,
   describeOutcome,
   filterCandidates,
+  groupCandidates,
+  percent,
+  sortCandidates,
   sourceStatusLabel,
+  viewpointLabel,
   type CandidateFilter,
+  type CandidateGrouping,
+  type CandidateOrder,
 } from '../services/referenceState'
-import type { ManualPicture, ReferenceSession, ReferenceSource, UpdateCandidateRequest } from '../types/references'
+import type { ManualPicture, ModelUpload, ReferenceSession, ReferenceSource, UpdateCandidateRequest } from '../types/references'
 
 const FILTERS: { value: CandidateFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -29,6 +36,8 @@ export function ReferenceSessionPage({ id, onBack }: { id: string; onBack: () =>
   const [busy, setBusy] = useState(false)
   const [filter, setFilter] = useState<CandidateFilter>('all')
   const [hideDuplicates, setHideDuplicates] = useState(true)
+  const [order, setOrder] = useState<CandidateOrder>('rank')
+  const [grouping, setGrouping] = useState<CandidateGrouping>('none')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -81,11 +90,16 @@ export function ReferenceSessionPage({ id, onBack }: { id: string; onBack: () =>
   const update = (candidateId: string, body: UpdateCandidateRequest) => run(() => referenceApi.updateCandidate(id, candidateId, body), 'Update failed.')
   const remove = (candidateId: string) => run(() => referenceApi.removeCandidate(id, candidateId), 'Remove failed.')
   const add = (picture: ManualPicture) => run(() => referenceApi.addPicture(id, picture), 'Could not add the picture.')
+  const rerank = () => run(() => referenceApi.rank(id), 'Ranking failed.')
+  const searchModels = () => run(() => referenceApi.searchModels(id, query), 'Model search failed.')
+  const addModel = (upload: ModelUpload) => run(() => referenceApi.addModel(id, upload), 'Could not check the model.')
 
   const clearCache = async () => {
     try {
       const result = await referenceApi.clearCache()
-      setNotice(`Cleared ${result.searchEntries} cached searches and ${result.files} downloads (${Math.round(result.bytes / 1024)} KB). Your pictures are kept.`)
+      setNotice(
+        `Cleared ${result.searchEntries} cached searches, ${result.embeddings} embeddings and ${result.files} downloads (${Math.round(result.bytes / 1024)} KB). Your pictures are kept.`,
+      )
     } catch (e) {
       fail(e, 'Could not clear the cache.')
     }
@@ -93,7 +107,8 @@ export function ReferenceSessionPage({ id, onBack }: { id: string; onBack: () =>
 
   const candidates = useMemo(() => session?.candidates ?? [], [session])
   const counts = useMemo(() => countByDecision(candidates), [candidates])
-  const visible = useMemo(() => filterCandidates(candidates, filter, hideDuplicates), [candidates, filter, hideDuplicates])
+  const visible = useMemo(() => sortCandidates(filterCandidates(candidates, filter, hideDuplicates), order), [candidates, filter, hideDuplicates, order])
+  const sections = useMemo(() => groupCandidates(visible, grouping), [visible, grouping])
   const titles = useMemo(() => new Map(candidates.map((c) => [c.id, c.title])), [candidates])
   const hiddenDuplicates = filterCandidates(candidates, filter, false).length - visible.length
 
@@ -228,8 +243,30 @@ export function ReferenceSessionPage({ id, onBack }: { id: string; onBack: () =>
               </button>
             ))}
           </div>
+          <div className="ref-filters">
+            <label className="toggle small">
+              <span>Order</span>
+              <select value={order} onChange={(e) => setOrder(e.target.value as CandidateOrder)}>
+                <option value="rank">Best match first</option>
+                <option value="found">As found</option>
+              </select>
+            </label>
+            <label className="toggle small">
+              <span>Group</span>
+              <select value={grouping} onChange={(e) => setGrouping(e.target.value as CandidateGrouping)}>
+                <option value="none">No grouping</option>
+                <option value="group">Visual groups</option>
+                <option value="viewpoint">Viewpoint</option>
+              </select>
+            </label>
+            <button type="button" className="btn btn--small" disabled={busy || candidates.length === 0} onClick={() => void rerank()} title="Use the pictures accepted so far as extra evidence">
+              Re-rank
+            </button>
+          </div>
+          <RankingStatus session={session} />
           <p className="muted small">
-            Similar-looking pictures are candidates, not proof that they show the same object. Check the source page and licence before relying on a picture.
+            Similar-looking pictures are candidates, not proof that they show the same object. Scores and suggestions are estimates; check the
+            source page and licence before relying on a picture.
           </p>
           {visible.length === 0 ? (
             <p className="muted">
@@ -238,23 +275,57 @@ export function ReferenceSessionPage({ id, onBack }: { id: string; onBack: () =>
                 : 'No pictures match this filter.'}
             </p>
           ) : (
-            <ul className="ref-grid">
-              {visible.map((c) => (
-                <CandidateCard
-                  key={c.id}
-                  sessionId={session.id}
-                  candidate={c}
-                  duplicateOf={c.duplicateOfId ? (titles.get(c.duplicateOfId) ?? null) : null}
-                  busy={busy}
-                  onUpdate={(body) => void update(c.id, body)}
-                  onRemove={() => void remove(c.id)}
-                />
-              ))}
-            </ul>
+            sections.map((section) => (
+              <div key={section.key} className="ref-section">
+                {section.title && (
+                  <h3 className="ref-section__title">
+                    {section.title} <span className="muted small">({section.items.length})</span>
+                  </h3>
+                )}
+                <ul className="ref-grid">
+                  {section.items.map((c) => (
+                    <CandidateCard
+                      key={c.id}
+                      sessionId={session.id}
+                      candidate={c}
+                      duplicateOf={c.duplicateOfId ? (titles.get(c.duplicateOfId) ?? null) : null}
+                      busy={busy}
+                      onUpdate={(body) => void update(c.id, body)}
+                      onRemove={() => void remove(c.id)}
+                    />
+                  ))}
+                </ul>
+              </div>
+            ))
           )}
           {hiddenDuplicates > 0 && <p className="muted small">{hiddenDuplicates} duplicate(s) hidden.</p>}
         </section>
+
+        <ModelCandidates
+          sessionId={session.id}
+          models={session.models}
+          lastSearch={session.lastModelSearch}
+          busy={busy}
+          canSearch={query.trim().length >= 2}
+          onSearch={() => void searchModels()}
+          onUpload={addModel}
+          onDecide={(m, decision) => void run(() => referenceApi.updateModel(id, m.id, decision, m.note), 'Update failed.')}
+          onRemove={(m) => void run(() => referenceApi.removeModel(id, m.id), 'Remove failed.')}
+        />
       </main>
     </div>
+  )
+}
+
+/** Whether visual ranking was used, and why not when it was not. */
+function RankingStatus({ session }: { session: ReferenceSession }) {
+  const r = session.ranking
+  if (!r.mode) return null
+  return (
+    <p className={`small ref-ranking ref-ranking--${r.mode}`}>
+      {r.mode === 'embeddings' ? `Ranked with visual similarity (${r.embeddingModel}).` : 'Ranked without visual similarity.'}
+      {r.inputViewpoint && ` Your photo: ${viewpointLabel(r.inputViewpoint.label).toLowerCase()} (${percent(r.inputViewpoint.confidence)}).`}
+      {r.note && <span className="muted"> {r.note}</span>}
+    </p>
   )
 }

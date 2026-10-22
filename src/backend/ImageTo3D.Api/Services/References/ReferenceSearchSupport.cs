@@ -69,6 +69,12 @@ public static class ReferenceDeduplicator
 
     public static IReadOnlyDictionary<Guid, Result> Assign(IReadOnlyList<Item> ordered, ulong? inputHash, int threshold)
     {
+        // A nearly featureless picture (flat colour, smooth gradient) has almost no bits set, so any
+        // two of them would be "within the threshold" whatever their colours: such hashes say
+        // nothing, and only the exact (SHA-256) comparison applies to them.
+        bool Informative(ulong hash) => System.Numerics.BitOperations.PopCount(hash) > threshold;
+        bool Near(ulong a, ulong b) => Informative(a) && Informative(b) && ImageHash.Distance(a, b) <= threshold;
+
         var results = new Dictionary<Guid, Result>();
         var canonical = new List<Item>();
         foreach (var item in ordered)
@@ -77,12 +83,12 @@ public static class ReferenceDeduplicator
             string? kind = null;
             if (item.Sha256 is { } sha && canonical.FirstOrDefault(c => c.Sha256 == sha) is { } same)
                 (of, kind) = (same.Id, "exact");
-            else if (item.DHash is { } hash && canonical.FirstOrDefault(c => c.DHash is { } h && ImageHash.Distance(h, hash) <= threshold) is { } near)
+            else if (item.DHash is { } hash && canonical.FirstOrDefault(c => c.DHash is { } h && Near(h, hash)) is { } near)
                 (of, kind) = (near.Id, "near");
 
             if (of is null)
                 canonical.Add(item);
-            var matchesInput = item.DHash is { } d && inputHash is { } input && ImageHash.Distance(d, input) <= threshold;
+            var matchesInput = item.DHash is { } d && inputHash is { } input && Near(d, input);
             results[item.Id] = new Result(of, kind, matchesInput);
         }
 

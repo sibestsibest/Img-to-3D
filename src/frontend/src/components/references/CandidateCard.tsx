@@ -1,5 +1,5 @@
 import { urls } from '../../services/apiClient'
-import { IMAGE_KINDS, RELATIONS, licenseTone } from '../../services/referenceState'
+import { IMAGE_KINDS, RELATIONS, confidenceLabel, licenseTone, percent, suggestionLabel } from '../../services/referenceState'
 import type { ReferenceCandidate, ReferenceDecision, UpdateCandidateRequest } from '../../types/references'
 
 interface Props {
@@ -27,6 +27,11 @@ export function CandidateCard({ sessionId, candidate: c, duplicateOf, busy, onUp
         )}
         {c.duplicateKind && <span className="ref-card__flag">{c.duplicateKind === 'exact' ? 'Same file' : 'Near duplicate'}</span>}
         {c.matchesInput && <span className="ref-card__flag ref-card__flag--input">Your photo</span>}
+        {c.ranking.position != null && (
+          <span className="ref-card__rank" title={`Score ${percent(c.ranking.score)} (${confidenceLabel(c.ranking.confidence)})`}>
+            #{c.ranking.position}
+          </span>
+        )}
       </div>
 
       <div className="ref-card__body">
@@ -56,6 +61,7 @@ export function CandidateCard({ sessionId, candidate: c, duplicateOf, busy, onUp
           </span>
           {c.decision !== 'pending' && <span className={`tag tag--decision-${c.decision}`}>{c.decision}</span>}
         </div>
+        <RankingSummary candidate={c} />
         {duplicateOf && <p className="muted small">Duplicate of “{duplicateOf}”.</p>}
         {c.warnings
           .filter((w) => w.code !== 'duplicate')
@@ -68,6 +74,15 @@ export function CandidateCard({ sessionId, candidate: c, duplicateOf, busy, onUp
         <details className="ref-card__more">
           <summary className="small">Details</summary>
           <p className="small ref-card__attribution">{c.attribution}</p>
+          {c.ranking.reasons.length > 0 && (
+            <ul className="ref-reasons small">
+              {c.ranking.reasons.map((r) => (
+                <li key={r.code} className={`ref-reasons__item ref-reasons__item--${r.effect === '+' ? 'plus' : r.effect === '-' ? 'minus' : 'info'}`}>
+                  {r.message}
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="muted small">
             Retrieved {new Date(c.retrievedAt).toLocaleString()}
             {c.query ? ` for “${c.query}”` : ''}
@@ -111,5 +126,32 @@ export function CandidateCard({ sessionId, candidate: c, duplicateOf, busy, onUp
         </div>
       </div>
     </li>
+  )
+}
+
+/** Score, how much evidence it rests on, and the zero-shot suggestions (all advisory). */
+function RankingSummary({ candidate: c }: { candidate: ReferenceCandidate }) {
+  const r = c.ranking
+  if (r.position == null) return null
+  const suggestions = [r.viewpoint, r.kind, r.relation].filter((s): s is NonNullable<typeof s> => s != null)
+  return (
+    <div className="ref-rank small">
+      <div className="ref-rank__bar" aria-label={`Score ${percent(r.score)}`}>
+        <span style={{ width: percent(r.score) }} />
+      </div>
+      <span className="muted">
+        {percent(r.score)} · {confidenceLabel(r.confidence)}
+        {r.group != null ? ` · group ${r.group}` : ''}
+      </span>
+      {suggestions.length > 0 && (
+        <div className="ref-card__tags" title="Suggestions from the image model: check them, they are often wrong.">
+          {suggestions.map((s, i) => (
+            <span key={i} className={`tag${s.label === 'uncertain' ? ' tag--uncertain' : ''}`}>
+              {suggestionLabel(s.label)} {percent(s.confidence)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

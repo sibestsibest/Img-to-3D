@@ -21,6 +21,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<ReferenceSearchCacheEntry> ReferenceSearchCache => Set<ReferenceSearchCacheEntry>();
 
+    public DbSet<ModelCandidate> ModelCandidates => Set<ModelCandidate>();
+
+    public DbSet<ImageEmbeddingCacheEntry> ImageEmbeddingCache => Set<ImageEmbeddingCacheEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var job = modelBuilder.Entity<GenerationJob>();
@@ -98,7 +102,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         session.Property(s => s.Name).HasMaxLength(100).IsRequired();
         session.Property(s => s.Query).HasMaxLength(200).IsRequired();
         session.HasIndex(s => new { s.OwnerKeyHash, s.UpdatedAt });
+        session.Property(s => s.RankingMode).HasMaxLength(16);
+        session.Property(s => s.RankingNote).HasMaxLength(300);
+        session.Property(s => s.InputViewpoint).HasMaxLength(16);
         session.HasMany(s => s.Candidates).WithOne().HasForeignKey(c => c.SessionId).OnDelete(DeleteBehavior.Cascade);
+        session.HasMany(s => s.Models).WithOne().HasForeignKey(m => m.SessionId).OnDelete(DeleteBehavior.Cascade);
 
         var candidate = modelBuilder.Entity<ReferenceCandidate>();
         candidate.ToTable("ReferenceCandidates");
@@ -123,6 +131,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         candidate.Property(c => c.ImageKind).HasMaxLength(16);
         candidate.Property(c => c.Relation).HasMaxLength(24);
         candidate.Property(c => c.Note).HasMaxLength(1000);
+        candidate.Property(c => c.SuggestedViewpoint).HasMaxLength(16);
+        candidate.Property(c => c.SuggestedKind).HasMaxLength(16);
+        candidate.Property(c => c.SuggestedRelation).HasMaxLength(24);
         candidate.HasIndex(c => new { c.SessionId, c.Source, c.SourceItemId }).IsUnique();
         candidate.HasIndex(c => new { c.SessionId, c.SortOrder });
 
@@ -133,5 +144,33 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         cache.Property(e => e.Source).HasMaxLength(32).IsRequired();
         cache.Property(e => e.Query).HasMaxLength(200).IsRequired();
         cache.HasIndex(e => e.ExpiresAt);
+
+        var model = modelBuilder.Entity<ModelCandidate>();
+        model.ToTable("ModelCandidates");
+        model.HasKey(m => m.Id);
+        model.Property(m => m.Origin).HasMaxLength(16).IsRequired();
+        model.Property(m => m.Source).HasMaxLength(32).IsRequired();
+        model.Property(m => m.SourceItemId).HasMaxLength(100).IsRequired();
+        model.Property(m => m.Title).HasMaxLength(300).IsRequired();
+        model.Property(m => m.PageUrl).HasMaxLength(2000);
+        model.Property(m => m.Author).HasMaxLength(200);
+        model.Property(m => m.License).HasMaxLength(32);
+        model.Property(m => m.LicenseRaw).HasMaxLength(100);
+        model.Property(m => m.LicenseUrl).HasMaxLength(2000);
+        model.Property(m => m.Query).HasMaxLength(200);
+        model.Property(m => m.ThumbnailUrl).HasMaxLength(2000);
+        model.Property(m => m.DownloadStatus).HasMaxLength(16);
+        model.Property(m => m.DownloadError).HasMaxLength(300);
+        model.Property(m => m.Format).HasMaxLength(8);
+        model.Property(m => m.EvaluationStatus).HasMaxLength(24);
+        model.Property(m => m.Decision).HasMaxLength(16);
+        model.Property(m => m.Note).HasMaxLength(1000);
+        model.HasIndex(m => new { m.SessionId, m.Source, m.SourceItemId }).IsUnique();
+
+        var embedding = modelBuilder.Entity<ImageEmbeddingCacheEntry>();
+        embedding.ToTable("ImageEmbeddingCache");
+        embedding.HasKey(e => new { e.Model, e.ImageSha256 });
+        embedding.Property(e => e.Model).HasMaxLength(64);
+        embedding.Property(e => e.ImageSha256).HasMaxLength(64);
     }
 }

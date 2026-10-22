@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ImageTo3D.Api.DTOs;
 using ImageTo3D.Api.Models;
+using ImageTo3D.Api.Services.Embeddings;
 using ImageTo3D.Api.Services.Inference;
 using ImageTo3D.Api.Services.References;
 using Microsoft.AspNetCore.Hosting;
@@ -49,6 +50,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     /// <summary>Answers every outbound reference-search request; nothing reaches the real internet.</summary>
     public FakeReferenceWeb Web { get; } = new();
 
+    /// <summary>Replaces CLIP so ranking is deterministic and needs no model files.</summary>
+    public FakeEmbedder Embedder { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -59,6 +63,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<IInferenceClient>();
             services.AddSingleton<IInferenceClient>(Inference);
             services.AddHttpClient(ReferenceHttp.ClientName).ConfigurePrimaryHttpMessageHandler(() => Web);
+            services.RemoveAll<IImageEmbedder>();
+            services.AddSingleton<IImageEmbedder>(Embedder);
         });
     }
 

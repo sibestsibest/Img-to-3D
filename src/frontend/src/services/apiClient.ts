@@ -13,6 +13,9 @@ import type {
 import type {
   ClearCacheResult,
   ManualPicture,
+  ModelUpload,
+  ReferenceCapabilities,
+  ReferenceDecision,
   ReferenceSession,
   ReferenceSessionSummary,
   ReferenceSource,
@@ -183,6 +186,22 @@ export const referenceApi = {
     request<ReferenceSession>(candidatePath(id, candidateId), json('PUT', body)),
   removeCandidate: (id: string, candidateId: string) => request<ReferenceSession>(candidatePath(id, candidateId), { method: 'DELETE' }),
   clearCache: () => request<ClearCacheResult>('/references/cache', { method: 'DELETE' }),
+  capabilities: () => request<ReferenceCapabilities>('/references/capabilities'),
+  /** Recompute ranking and groups, using the pictures accepted so far. */
+  rank: (id: string) => request<ReferenceSession>(referencePath(id, '/rank'), { method: 'POST' }),
+  searchModels: (id: string, query: string) => request<ReferenceSession>(referencePath(id, '/models/search'), json('POST', { query })),
+  addModel(id: string, upload: ModelUpload): Promise<ReferenceSession> {
+    const body = new FormData()
+    body.append('file', upload.file)
+    for (const key of ['title', 'author', 'pageUrl', 'license'] as const) {
+      const value = upload[key]?.trim()
+      if (value) body.append(key, value)
+    }
+    return request<ReferenceSession>(referencePath(id, '/models'), { method: 'POST', body })
+  },
+  updateModel: (id: string, modelId: string, decision: ReferenceDecision, note?: string | null) =>
+    request<ReferenceSession>(referencePath(id, `/models/${encodeURIComponent(modelId)}`), json('PUT', { decision, note })),
+  removeModel: (id: string, modelId: string) => request<ReferenceSession>(referencePath(id, `/models/${encodeURIComponent(modelId)}`), { method: 'DELETE' }),
 }
 
 /** Relative URLs only: the browser never learns internal service addresses or file paths. */
@@ -205,4 +224,6 @@ export const urls = {
   /** Stored previews never change for a given ID. */
   referenceThumbnail: (sessionId: string, candidateId: string) => `${BASE}${candidatePath(sessionId, candidateId, '/thumbnail')}`,
   referenceInput: (sessionId: string, size: 'thumbnail' | 'full' = 'thumbnail') => `${BASE}${referencePath(sessionId, '/input')}?size=${size}`,
+  modelThumbnail: (sessionId: string, modelId: string) => `${BASE}${referencePath(sessionId, `/models/${encodeURIComponent(modelId)}/thumbnail`)}`,
+  modelFile: (sessionId: string, modelId: string) => `${BASE}${referencePath(sessionId, `/models/${encodeURIComponent(modelId)}/file`)}`,
 }

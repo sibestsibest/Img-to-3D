@@ -171,13 +171,14 @@ and a correctly scaled model is still not dimensionally identical to the origina
 
 | Suite | Count | What it covers |
 |---|---|---|
-| `tests/shared` | 127 | perceptual hash (resize/JPEG tolerance, distinct pictures, transparency) and thumbnails, DXF R12 export (header, mm units, CUT layer closed contours at 1:1, annotation layer, text encoding), drawing revision label, cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
+| `tests/shared` | 138 | CLIP tokenizer (BPE merges, reference token IDs, truncation), CLIP preprocessing (normalisation, alpha, centre crop), bicubic resampling, cosine/softmax/clustering, perceptual hash (resize/JPEG tolerance, distinct pictures, transparency) and thumbnails, DXF R12 export (header, mm units, CUT layer closed contours at 1:1, annotation layer, text encoding), drawing revision label, cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
 | `tests/inference` | 23 | preprocessing ports, job state machine, internal API validation, artifact whitelist, API key, **real TripoSR smoke test** (chair → valid coloured mesh, Y-up proportions, density threshold sanity) and mid-inference cancellation |
-| `tests/backend` | 147 | reference search against a fake web (attribution and licence normalisation, previews and their size/host/redirect limits, cache and clearing, per-source failures with bounded retries, timeouts, rate limiting, empty and malformed answers, disabled sources, exact/near duplicates and input match, review decisions, manual pictures, sessions from jobs, owner isolation, no credentials sent, cancellation), exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
-| `src/frontend` | 64 | reference filters, licence tones, source outcomes, reference API calls and routes, drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
+| `tests/backend` | 179 | real CLIP model (caption matching on chair/robot, resize/JPEG stability, zero-shot, missing files, disabled), ranking (signals, re-normalisation without embeddings, duplicates, input photo, groups, new viewpoint, accepted evidence, capped relation), model evaluation (listing only, downloadability, licence, face count, geometry, scale), ranking through the API with a fake embedder (fallback, failure isolation, embedding cache), Sketchfab search (licence mapping, age-restricted skipped, preview host rules, cache, failures, timeout, disabled), GLB/STL upload checks (closed/open, unitless STL, ASCII STL/OBJ/broken/oversized refused, duplicates, file download, review, removal, isolation), reference search against a fake web (attribution and licence normalisation, previews and their size/host/redirect limits, cache and clearing, per-source failures with bounded retries, timeouts, rate limiting, empty and malformed answers, disabled sources, exact/near duplicates and input match, review decisions, manual pictures, sessions from jobs, owner isolation, no credentials sent, cancellation), exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
+| `src/frontend` | 68 | ranking order, visual/viewpoint grouping, suggestion and confidence labels, model API calls, reference filters, licence tones, source outcomes, reference API calls and routes, drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
 
 Backend tests replace the inference HTTP client with an in-memory fake, so they need no model, and
-the reference-search HTTP handler with a fake web, so they never contact the internet.
+the reference-search HTTP handler with a fake web and CLIP with a deterministic fake, so they never
+contact the internet; the real-model tests run only when the model files are present.
 
 ## Configuration
 
@@ -214,6 +215,11 @@ variables (`Section__Key`). Key settings:
 | `ReferenceSearch:CacheTtl` | 7 days | cached search responses |
 | `ReferenceSearch:ThumbnailMaxSide` / `ThumbnailMaxBytes` | 640 px / 4 MB | only previews are downloaded |
 | `ReferenceSearch:NearDuplicateDistance` | 6 | dHash bits (of 64) for a near duplicate |
+| `Embeddings:Enabled` / `ModelDirectory` | `true` / `models/clip` | optional CLIP ranking; missing files mean basic ranking |
+| `Embeddings:IntraOpThreads` | 2 | CPU threads per embedding call |
+| `Embeddings:GroupThreshold` | 0.86 | mean cosine for pictures to share a visual group |
+| `ModelSearch:SketchfabEnabled` | `true` | anonymous Sketchfab listing search |
+| `ModelSearch:MaxUploadBytes` / `MaxTriangles` | 64 MB / 2,000,000 | uploaded GLB/STL limits |
 
 The SQLite schema is managed by EF Core migrations (`src/backend/ImageTo3D.Api/Data/Migrations`),
 applied on start. A database created by an older version (before migrations, by `EnsureCreated`)
@@ -249,11 +255,43 @@ downloads are cached (7 days, shared; `DELETE /api/references/cache` or **Clear 
 without touching sessions). You accept or reject each picture and can note what it is (photo,
 render, drawing) and how it relates to the object (same object, variant, similar but different).
 
+### Ranking and grouping
+
+Pictures are ranked after every search (and on **Re-rank**, which also uses the pictures you have
+accepted). With the optional CLIP model (`.\scripts\download-models.ps1 -Embeddings`, ~155 MB,
+MIT; see [models/README.md](models/README.md)) the score mixes: match with the search text,
+similarity to your input photo and to accepted pictures, whether it probably shows a side your
+photo does not, resolution, licence and source. Without the model only the non-visual signals are
+used and the page says so (`ranking.mode = basic`). Every picture shows its score, how much
+evidence it rests on (less without embeddings or an input photo) and the reasons. CLIP also
+suggests a viewpoint (front, back, side, top, three-quarter, or *uncertain*), a kind (photo,
+render, drawing) and a relation to your photo (same object?, variant?, similar but different?):
+these are advisory, the relation's confidence is capped at 50 %, and your own fields stay
+separate. Pictures whose embeddings are close form *visual groups* (same or closely related
+object); the grid can be grouped by visual group or by viewpoint. Embeddings are cached by the
+SHA-256 of the exact preview bytes and cleared with the other caches.
+
+### Existing 3D models
+
+**Search Sketchfab** lists models for the query (anonymous, no account; only listings and preview
+images are read). Downloading from Sketchfab needs a free account, so it is not done here: download
+a model yourself and **Check a model file** (binary GLB or binary STL, up to 64 MB) to have the mesh
+read and checked: triangles, separate pieces, closed or open surface, degenerate faces, declared
+size (glTF is metres; STL has no unit, so millimetres are assumed and flagged). Each candidate gets
+a score with reasons: visual similarity of its preview (or of a shaded render of the uploaded mesh)
+to your photo and accepted pictures, availability, whether the licence allows modified versions,
+and mesh workability. The model's name is never used. Listing-only candidates are marked
+`metadata_only` and get a low confidence.
+
 Limitations: duplicate detection finds copies of the same picture, not other photos of the same
-object; ranking by visual similarity, viewpoint grouping and 3D model search come with local
-embeddings (phase 5). A picture with an unknown licence is for personal reference only; check the
-source page before using any picture. Previews that are not PNG, JPEG or WebP (for example GIF)
-are listed without a preview.
+object (visual groups do that, approximately); nearly featureless pictures are compared by exact
+file only. Similarity scores and zero-shot suggestions are estimates from a general-purpose model,
+not identification: two different kits can look alike and the same kit can look different under
+other lighting. The calibration constants (`ReferenceRanker`) were chosen from observed CLIP
+cosines, not measured against labelled data. A picture or model with an unknown licence is for
+personal reference only; check the source page before using it. Previews that are not PNG, JPEG or
+WebP (for example GIF) are listed without a preview. OBJ, glTF with separate files and ASCII STL
+are not accepted yet. Reusing an accepted model in place of generation comes in phase 6.
 
 ## Part design
 
@@ -384,6 +422,13 @@ Verified on the development machine (Windows 10, CPU only):
 * Reference search against the live Wikimedia Commons, Openverse and Internet Archive APIs
   (2026-10-21, query "RX-78-2 gundam", temporary database): all three sources answered, 41 of 41
   previews downloaded, the repeated search was served from the cache.
+* Ranking with the real CLIP model on live results (2026-10-22, same query, temporary database):
+  Gundam statue and kit photos ranked first, venue photos (entrance, pavilion) last; query cosines
+  0.18–0.32. With one of the results as input photo it was recognised as the input itself (cosine
+  0.98, moved down) and other RX-78-2 pictures were suggested as variants. Sketchfab search
+  returned 24 listings (12 without a licence, shown as unknown); an uploaded unrelated TripoSR mesh
+  was checked (closed, 78,012 triangles, 100 × 68.5 × 77.5 mm) and ranked low as visually different.
+  Timings on this CPU-only machine: first search 11 s (model load, 41 previews), cached repeat 1.5 s.
 
 Not verified:
 

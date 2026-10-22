@@ -198,10 +198,20 @@ Every mutating call returns the full session.
 | DELETE | `/api/references/{id}/candidates/{candidateId}` | Removes the candidate and its files; duplicates are regrouped |
 | GET | `/api/references/{id}/input?size=thumbnail\|full` | Input photo: JPEG preview or upright PNG |
 | GET | `/api/references/{id}/candidates/{candidateId}/thumbnail` | Stored JPEG preview (longest side ≤ `ThumbnailMaxSide`), `404` when none |
-| DELETE | `/api/references/cache` | Clears the shared, disposable caches: `{ searchEntries, files, bytes }`. Sessions keep their pictures |
+| DELETE | `/api/references/cache` | Clears the shared, disposable caches: `{ searchEntries, files, bytes, embeddings }`. Sessions keep their pictures |
+| GET | `/api/references/capabilities` | `{ embeddings: { available, model, reason }, imageSources[], modelSources[] }`; loads the CLIP model on first call |
+| POST | `/api/references/{id}/rank` | Recompute ranking, groups and suggestions of pictures and models (uses accepted pictures). Also done automatically after a search, a manual picture, a removal and a model search or upload |
+| POST | `/api/references/{id}/models/search` | JSON `{ query? }`. Sketchfab listings (anonymous); always `200`, the outcome is in `lastModelSearch`; `400 query_required` |
+| POST | `/api/references/{id}/models` | Multipart `file` (binary GLB or binary STL, format detected from the content) plus optional `title`, `author`, `pageUrl`, `license`, `licenseUrl`. Checked geometrically. `400 unsupported_model` (ASCII STL, OBJ, others) / `invalid_license`, `409 already_added` / `session_full`, `413 file_too_large`, `422 unreadable_model` / `invalid_mesh` / `model_too_large` |
+| PUT | `/api/references/{id}/models/{modelId}` | `{ decision: pending\|accepted\|rejected, note? }` |
+| DELETE | `/api/references/{id}/models/{modelId}` | Removes the candidate, its preview and uploaded file |
+| GET | `/api/references/{id}/models/{modelId}/thumbnail` | JPEG preview (the listing's image, or a shaded render of an uploaded mesh) |
+| GET | `/api/references/{id}/models/{modelId}/file` | The uploaded GLB (`model/gltf-binary`) or STL (`model/stl`), byte for byte |
 
 Session: `{ id, name, query, sourceJobId, hasInputImage, inputWidth, inputHeight, createdAt,
-updatedAt, lastSearchedAt, lastSearch[], manualLinks[], candidates[] }`.
+updatedAt, lastSearchedAt, lastSearch[], manualLinks[], candidates[], ranking, lastModelSearch[],
+models[] }`. `ranking`: `{ mode: embeddings|basic|null, rankedAt, note, inputViewpoint, embeddingModel }`
+(`note` says why ranking is basic or partial, e.g. the model is not installed).
 
 `lastSearch[]`: `{ source, name, status, hits, added, fromCache, message }` with `status` ∈ `ok,
 empty, failed, timeout, rate_limited, disabled`. Failures are not cached; results (including empty
@@ -221,6 +231,26 @@ licence is unknown. `warnings[]` are `{ code, severity, message, source }` with 
 `duplicate`, `matches_input`. Previews are only downloaded over HTTPS from the source's own image
 hosts (`skipped` otherwise); a duplicate is a copy of the same picture, not another photo of the
 same object.
+
+Candidate `ranking`: `{ position (1 = best), score (0..1), confidence (0..1), group, querySimilarity,
+inputSimilarity, viewpoint, kind, relation, reasons[] }`. `viewpoint`, `kind` and `relation` are
+`{ label, confidence }` suggestions (`uncertain` when no label is clearly ahead; relation confidence
+≤ 0.5), never assertions. `reasons[]`: `{ code, message, effect: +|-|0 }`, codes `query_match`,
+`query_weak`, `looks_like_input`, `unlike_input`, `like_accepted`, `new_view`, `same_view`,
+`low_resolution`, `high_resolution`, `licence_unknown`, `licence_restricted`, `duplicate`,
+`is_input`, `no_visual`.
+
+Model candidate: `{ id, origin: search|manual, source: sketchfab|upload, sourceName, title, pageUrl,
+author, license, attribution, query, retrievedAt, isDownloadable, faceCount, vertexCount,
+fileBytes, hasThumbnail, downloadStatus, format: glb|stl|null, evaluationStatus:
+metadata_only|geometry_checked, score, confidence, visualSimilarity, reasons[], geometry, decision,
+note, warnings[] }`; `geometry` (uploads): `{ triangles, components, closed, boundaryEdges,
+nonManifoldEdges, degenerateTriangles, sizeXMm, sizeYMm, sizeZMm, scaleStatus:
+plausible|unitless|suspicious }`. Model reason codes: `looks_like_object`, `looks_different`,
+`looks_somewhat`, `query_weak`, `downloadable`, `not_downloadable`, `no_derivatives`,
+`licence_unknown`, `very_coarse`, `dense_mesh`, `closed`, `open`, `degenerate`, `fragmented`,
+`components`, `scale_plausible`, `scale_unitless`, `scale_suspicious`, `no_visual`, `listing_only`.
+Models are listed best score first.
 
 ## Internal inference API (`http://127.0.0.1:5090`)
 

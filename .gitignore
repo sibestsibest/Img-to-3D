@@ -18,6 +18,7 @@ models/**/*.download
 models/triposr/config.yaml
 models/triposr/LICENSE.txt
 models/triposr/README.txt
+models/clip/
 
 # Python (SF3D service)
 .venv/
