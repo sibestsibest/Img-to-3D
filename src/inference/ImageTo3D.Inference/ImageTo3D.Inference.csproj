@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- ONNX Runtime native build: Cpu (default, verified) or Cuda (dotnet build -p:OrtFlavor=Cuda; needs CUDA 12 + cuDNN 9, not verified here). -->
+    <!-- ONNX Runtime native build: Cpu (default, verified) or Cuda (dotnet build -p:OrtFlavor=Cuda; ORT 1.31 GPU needs CUDA 13 + cuDNN 9; started by scripts/dev.ps1 -Gpu). -->
     <OrtFlavor Condition="'$(OrtFlavor)' == ''">Cpu</OrtFlavor>
   </PropertyGroup>
 

@@ -129,6 +129,9 @@ cd image-to-3d
 .\scripts\dev.ps1          # opens three windows: inference, API, web
 ```
 
+On a machine with an NVIDIA GPU, add `-Gpu` to both commands so TripoSR runs on the GPU (needs
+CUDA 13 and cuDNN 9; see [GPU (CUDA)](#gpu-cuda)).
+
 Open <http://localhost:5173>, drop an image, click **Generate 3D model**.
 
 Manual start, one terminal each:
@@ -212,7 +215,7 @@ variables (`Section__Key`). Key settings:
 | Setting | Default | |
 |---|---|---|
 | `Inference:ModelDirectory` | `../../../models` | relative to the inference project |
-| `Inference:ExecutionProvider` | `Cpu` | `Cuda` needs the CUDA build |
+| `Inference:ExecutionProvider` | `Cpu` | `Cuda` needs the CUDA build (`dev.ps1 -Gpu` sets both) |
 | `Inference:CpuLimit` | 0.8 | fraction of logical CPUs ONNX Runtime uses when `IntraOpThreads` is 0 (SF3D: `SF3D_CPU_LIMIT`) |
 | `Inference:MarchingCubesResolution` | 256 | 32–320; lower = faster, coarser |
 | `Inference:DensityThreshold` | 25 | official TripoSR iso-level |
@@ -454,11 +457,33 @@ The **Export** card of a project offers:
 
 ## GPU (CUDA)
 
-Not verified: the development machine has no NVIDIA GPU. The code path exists:
+TripoSR runs on an NVIDIA GPU through ONNX Runtime's CUDA provider. ONNX Runtime 1.31
+(`Microsoft.ML.OnnxRuntime.Gpu`) is built with **CUDA 13** and needs **cuDNN 9**; the package does
+not include them. Not verified on real hardware: the development machine has no GPU (the GPU build
+compiles, and without CUDA it reports `unavailable` instead of falling back to the CPU).
+
+Install once on the GPU machine:
+
+1. NVIDIA driver 580 or newer: <https://www.nvidia.com/Download/index.aspx>
+2. CUDA Toolkit 13 (Windows, x86_64): <https://developer.nvidia.com/cuda-downloads>
+3. cuDNN 9 for CUDA 13 (Windows, x86_64): <https://developer.nvidia.com/cudnn-downloads>
+4. .NET 10 SDK, Node.js LTS and PowerShell 7 (`winget install Microsoft.DotNet.SDK.10`,
+   `winget install OpenJS.NodeJS.LTS`, `winget install Microsoft.PowerShell`)
+
+Then, in a new terminal (VS Code's terminal works):
 
 ```powershell
-# CUDA 12.x + cuDNN 9 installed and on PATH, NVIDIA driver recent enough for CUDA 12
-dotnet run --project src\inference\ImageTo3D.Inference -c Release -p:OrtFlavor=Cuda -- --Inference:ExecutionProvider=Cuda
+.\scripts\setup.ps1 -Gpu   # checks GPU, driver, CUDA 13 and cuDNN 9; restores the GPU build; downloads models
+.\scripts\dev.ps1 -Gpu     # starts everything; prints "TripoSR ready on GPU (CUDA)" when loaded
+```
+
+`-Gpu` refuses to start when the GPU, driver, CUDA or cuDNN is missing and says what to install;
+it never falls back to the CPU silently. CUDA or cuDNN folders found outside PATH (under `CUDA_PATH`
+or `C:\Program Files\NVIDIA\CUDNN`) are added for the inference service. Manual equivalent:
+
+```powershell
+$env:Inference__ExecutionProvider = 'Cuda'
+dotnet run --project src\inference\ImageTo3D.Inference -c Release -p:OrtFlavor=Cuda
 ```
 
 `-p:OrtFlavor=Cuda` swaps `Microsoft.ML.OnnxRuntime` for `Microsoft.ML.OnnxRuntime.Gpu` 1.31.0. If
