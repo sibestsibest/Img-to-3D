@@ -54,6 +54,8 @@ public sealed class PartDesignProject
     public List<DesignPart> Parts { get; set; } = [];
 
     public List<PartOperation> Operations { get; set; } = [];
+
+    public List<PartRelation> Relations { get; set; } = [];
 }
 
 public enum DesignPartState
@@ -197,9 +199,44 @@ public sealed class PartOperation
     /// <summary>JSON list of { PartId, Before, After } snapshots; Before is null for parts the operation created.</summary>
     public required string ChangesJson { get; set; }
 
+    /// <summary>Same for relations: { RelationId, Before, After }; empty for operations that changed none (and for history older than relations).</summary>
+    public string RelationChangesJson { get; set; } = "[]";
+
     public bool IsUndone { get; set; }
 
     public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// How two parts of a project are joined (see <c>RelationKinds</c>). Relations are edited through
+/// the project history like parts: removing one only marks it, so undo can restore it.
+/// </summary>
+public sealed class PartRelation
+{
+    public Guid Id { get; set; }
+
+    public Guid ProjectId { get; set; }
+
+    public Guid PartAId { get; set; }
+
+    public Guid PartBId { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    // Editable state below; everything here is captured by RelationSnapshot for undo/redo.
+
+    public required string Kind { get; set; }
+
+    /// <summary>The parts are meant to occupy the same space (e.g. a peg modelled without its hole); a collision between them is then only info.</summary>
+    public bool AllowOverlap { get; set; }
+
+    /// <summary>Hole diameter (peg in hole) or slot width (slot) in millimetres, which the part sizes do not give.</summary>
+    public double? OpeningSizeMm { get; set; }
+
+    public string? Note { get; set; }
+
+    /// <summary>Deleted by the user, with a part it joined, or created by an operation that was undone.</summary>
+    public bool IsRemoved { get; set; }
 }
 
 /// <summary>

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
+import { AssemblyPanel } from '../components/partdesign/AssemblyPanel'
 import { ExportPanel } from '../components/partdesign/ExportPanel'
 import { IssueList, PartPropertiesPanel } from '../components/partdesign/PartPropertiesPanel'
 import { PartDrawingPanel } from '../components/partdesign/PartDrawingPanel'
 import { PartTree } from '../components/partdesign/PartTree'
 import { PartViewport, type PlanePreview } from '../components/partdesign/PartViewport'
 import { PrimitivePanel } from '../components/partdesign/PrimitivePanel'
+import { RelationsPanel } from '../components/partdesign/RelationsPanel'
 import { SplitPanel } from '../components/partdesign/SplitPanel'
 import { usePartDesign } from '../hooks/usePartDesign'
 import { designApi } from '../services/apiClient'
 import { activeParts, buildTree, initialViewState, isVisible, planeFor, viewReducer, type Axis } from '../services/partDesignState'
-import type { AddPrimitiveRequest, UpdatePartRequest } from '../types/partDesign'
+import type { AddPrimitiveRequest, CreateRelationRequest, RelationRequest, UpdatePartRequest } from '../types/partDesign'
 
 export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void }) {
   const { project, loadError, actionError, clearActionError, busy, run } = usePartDesign(id)
@@ -51,6 +53,11 @@ export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void 
     if (added) dispatch({ type: 'select', id: added.id })
     return next !== null
   }
+
+  const addRelation = async (request: CreateRelationRequest) => (await run(() => designApi.addRelation(project.id, request))) !== null
+  const updateRelation = async (relationId: string, request: RelationRequest) =>
+    (await run(() => designApi.updateRelation(project.id, relationId, request))) !== null
+  const selectPart = (partId: string) => dispatch({ type: 'select', id: partId })
 
   const split = async (axis: Axis, offsetMm: number, allowOpen: boolean) => {
     if (!selected) return
@@ -106,6 +113,17 @@ export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void 
 
         <PrimitivePanel busy={busy} defaultOpen={project.source.kind === 'none'} onAdd={addPrimitive} />
 
+        <RelationsPanel
+          relations={project.relations}
+          parts={active}
+          selectedId={view.selectedId}
+          busy={busy}
+          onAdd={addRelation}
+          onUpdate={updateRelation}
+          onRemove={(relationId) => void run(() => designApi.removeRelation(project.id, relationId))}
+          onSelectPart={selectPart}
+        />
+
         <ExportPanel projectId={project.id} parts={parts} version={project.updatedAt} />
 
         <section className="card">
@@ -144,6 +162,7 @@ export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void 
             <p>Select a part in the list or the viewport to edit its fabrication properties or split it.</p>
           </div>
         )}
+        <AssemblyPanel projectId={project.id} parts={active} version={project.updatedAt} onSelectPart={selectPart} />
         <footer className="disclaimer">
           <strong>Estimates, not measurements.</strong> Categories are suggestions from simple shape rules, and dimensions measured on a
           model (AI-generated or reused) are at an assumed scale; only stock shapes have the sizes you entered. Confirm measurements on the

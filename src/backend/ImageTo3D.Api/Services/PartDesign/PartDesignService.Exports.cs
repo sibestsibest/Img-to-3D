@@ -217,6 +217,21 @@ public sealed partial class PartDesignService
             }
         }
 
+        // Assembly and quality: relations, fits, collisions between the parts, geometry quality.
+        var assembly = await BuildAssemblyAsync(project, meshes, cancellationToken);
+        foreach (var relation in assembly.Relations)
+        {
+            foreach (var issue in relation.Validation.Issues.Where(i => i.Severity is "warning" or "error"))
+                warnings.Add(new ManifestWarningDto(issue.Code, issue.Severity, issue.Message, relation.PartAId));
+        }
+
+        foreach (var collision in assembly.Collisions.Where(c => c.Severity is "warning" or "error"))
+            warnings.Add(new ManifestWarningDto(collision.Code, collision.Severity, collision.Message, collision.PartAId));
+        foreach (var issue in assembly.Issues.Where(i => i.Severity is "warning" or "error"))
+            warnings.Add(new ManifestWarningDto(issue.Code, issue.Severity, issue.Message, null));
+        files.Add((AssemblyFile, "assembly", null, JsonSerializer.SerializeToUtf8Bytes(assembly with { Quality = assembly.Quality with { Parts = [] } }, ManifestJson)));
+        files.Add(("metadata/quality.json", "quality", null, JsonSerializer.SerializeToUtf8Bytes(assembly.Quality, ManifestJson)));
+
         files.Add(("bom.csv", "bom", null, Bom(project, parts).ToBytes()));
         files.Add(("cut-list.csv", "cut-list", null, CutList(parts).ToBytes()));
         files.Add(("README.txt", "readme", null, Encoding.UTF8.GetBytes(Readme(project, label, note, createdAt, warnings.Count))));
@@ -232,9 +247,13 @@ public sealed partial class PartDesignService
             CoordinateSystem,
             new ManifestProjectDto(project.Id, project.Name, project.SourceJobId, project.SourceFileName, SourceDto(project), project.MmPerModelUnit, "estimated", HistorySequence(project), Utc(project.UpdatedAt)),
             parts.Select(p => new ManifestPartDto(p.Item, p.Part.Id, p.Part.Name, p.Part.Category, p.Part.ReviewStatus, p.Validation.Status, p.Part.Quantity,
-                files.Where(f => f.PartId == p.Part.Id).Select(f => f.Path).ToList())).ToList(),
+                files.Where(f => f.PartId == p.Part.Id).Select(f => f.Path).ToList(),
+                PartDto(p.Part, project).Spec,
+                files.Where(f => f.PartId == p.Part.Id && f.Kind == "stl").Select(f => Sha256(f.Content)).FirstOrDefault())).ToList(),
             files.Select(f => new ManifestFileDto(f.Path, f.Kind, f.PartId, f.Content.LongLength, Sha256(f.Content))).ToList(),
-            warnings);
+            warnings,
+            new ManifestAssemblyDto(assembly.Status, assembly.Relations.Count, assembly.Collisions.Count(c => c.Severity != "info"), assembly.Complete,
+                assembly.Quality.Status, assembly.Quality.SolidExportReadyParts));
 
         using var buffer = new MemoryStream();
         using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
@@ -374,6 +393,7 @@ public sealed partial class PartDesignService
         sb.AppendLine("  cut-list.csv   rod and tube cuts grouped by stock");
         sb.AppendLine("  drawings/      sheet parts: PDF and SVG at 1:1, DXF (layer CUT = cutting contours)");
         sb.AppendLine("  stl/           every part as STL, millimetres");
+        sb.AppendLine("  metadata/      assembly.json (relations, fits, collisions), quality.json (geometry quality per part)");
         sb.AppendLine();
         sb.AppendLine("Before cutting");
         sb.AppendLine("  - Print PDFs at 100% / actual size, never 'fit to page'; check the 100 mm bar with a ruler.");

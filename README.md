@@ -13,7 +13,8 @@ Around the generator the app follows *retrieval first, reuse second, reconstruct
   existing 3D models (Sketchfab listings, your own GLB/STL), then **Get the geometry**: reuse an
   accepted model, generate (with or without extra photos) or build by hand.
 * **Part design** (`#/designs`): break a model into editable parts (sheet, rod, tube, stock,
-  custom), split them with real capped plane cuts, add stock shapes with exact sizes, and export 1:1
+  custom), split them with real capped plane cuts, add stock shapes with exact sizes, relate parts
+  (glued, peg in hole, tube over rod, nested, slot) with fit and collision checks, and export 1:1
   drawings (SVG, PDF, DXF), BOM, cut list, STL and numbered release packages.
 
 Everything runs locally; no paid API, account or cloud service is needed.
@@ -194,10 +195,10 @@ and a correctly scaled model is still not dimensionally identical to the origina
 
 | Suite | Count | What it covers |
 |---|---|---|
-| `tests/shared` | 170 | reconstruction planner (preference order, reuse blocks generation, listing-only models, closed-mesh preference, licence/unit warnings, multi-view always unsupported, hybrid engine and same-object requirements, cap on extra photos, unreachable engine, manual fallback), stock shapes (plate/block/rod/tube closed and outward, exact sizes, axes, polygon volumes, tube bore, usable plate outline, input validation), CLIP tokenizer (BPE merges, reference token IDs, truncation), CLIP preprocessing (normalisation, alpha, centre crop), bicubic resampling, cosine/softmax/clustering, perceptual hash (resize/JPEG tolerance, distinct pictures, transparency) and thumbnails, DXF R12 export (header, mm units, CUT layer closed contours at 1:1, annotation layer, text encoding), drawing revision label, cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
+| `tests/shared` | 201 | assembly collisions (triangle pairs crossing, touching, coplanar, parallel within tolerance, shallow penetration; BVH pair search against brute force; rod through plate with intersection length, plate on block touching, separated, block inside block both ways, rod in a tube bore, oversize rod, open meshes, test budget, point-in-solid ray parity), fit checks (tube over rod, peg in hole too tight/too loose, tube bore as hole, slot, unknown opening, estimates marked, category mismatch, glued/non-round nested, unknown kind), reconstruction planner (preference order, reuse blocks generation, listing-only models, closed-mesh preference, licence/unit warnings, multi-view always unsupported, hybrid engine and same-object requirements, cap on extra photos, unreachable engine, manual fallback), stock shapes (plate/block/rod/tube closed and outward, exact sizes, axes, polygon volumes, tube bore, usable plate outline, input validation), CLIP tokenizer (BPE merges, reference token IDs, truncation), CLIP preprocessing (normalisation, alpha, centre crop), bicubic resampling, cosine/softmax/clustering, perceptual hash (resize/JPEG tolerance, distinct pictures, transparency) and thumbnails, DXF R12 export (header, mm units, CUT layer closed contours at 1:1, annotation layer, text encoding), drawing revision label, cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
 | `tests/inference` | 23 | preprocessing ports, job state machine, internal API validation, artifact whitelist, API key, **real TripoSR smoke test** (chair → valid coloured mesh, Y-up proportions, density threshold sanity) and mid-inference cancellation |
-| `tests/backend` | 202 | reconstruction decision through the API (route list, reuse of an accepted GLB/STL without inference and with provenance, generation refused while a model is accepted, hybrid extra photos sent to the engine, engine without extra photos, single-image failure and retry, deleted running job, manual geometry, owner isolation, non-reusable models), stock shapes (empty projects, exact specs, drawing and cut list, undo/redo, invalid input, isolation), extra photos stored and sent with their views, migration of existing projects to source kinds, real CLIP model (caption matching on chair/robot, resize/JPEG stability, zero-shot, missing files, disabled), ranking (signals, re-normalisation without embeddings, duplicates, input photo, groups, new viewpoint, accepted evidence, capped relation), model evaluation (listing only, downloadability, licence, face count, geometry, scale), ranking through the API with a fake embedder (fallback, failure isolation, embedding cache), Sketchfab search (licence mapping, age-restricted skipped, preview host rules, cache, failures, timeout, disabled), GLB/STL upload checks (closed/open, unitless STL, ASCII STL/OBJ/broken/oversized refused, duplicates, file download, review, removal, isolation), reference search against a fake web (attribution and licence normalisation, previews and their size/host/redirect limits, cache and clearing, per-source failures with bounded retries, timeouts, rate limiting, empty and malformed answers, disabled sources, exact/near duplicates and input match, review decisions, manual pictures, sessions from jobs, owner isolation, no credentials sent, cancellation), exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
-| `src/frontend` | 77 | reconstruction states and route actions, stock-shape form parsing, job route, ranking order, visual/viewpoint grouping, suggestion and confidence labels, model API calls, reference filters, licence tones, source outcomes, reference API calls and routes, drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
+| `tests/backend` | 211 | assembly through the API (relations with fit checks against the project limits, edit/undo/redo/remove, self/duplicate/inactive refusals, part deletion removes relations and undo restores them, discarded redo branch, collisions with intentional-overlap exceptions, glued contact and gaps, containment and nesting, unmoved duplicates, quality report of a generated model, package metadata and release comparison, owner isolation), reconstruction decision through the API (route list, reuse of an accepted GLB/STL without inference and with provenance, generation refused while a model is accepted, hybrid extra photos sent to the engine, engine without extra photos, single-image failure and retry, deleted running job, manual geometry, owner isolation, non-reusable models), stock shapes (empty projects, exact specs, drawing and cut list, undo/redo, invalid input, isolation), extra photos stored and sent with their views, migration of existing projects to source kinds, real CLIP model (caption matching on chair/robot, resize/JPEG stability, zero-shot, missing files, disabled), ranking (signals, re-normalisation without embeddings, duplicates, input photo, groups, new viewpoint, accepted evidence, capped relation), model evaluation (listing only, downloadability, licence, face count, geometry, scale), ranking through the API with a fake embedder (fallback, failure isolation, embedding cache), Sketchfab search (licence mapping, age-restricted skipped, preview host rules, cache, failures, timeout, disabled), GLB/STL upload checks (closed/open, unitless STL, ASCII STL/OBJ/broken/oversized refused, duplicates, file download, review, removal, isolation), reference search against a fake web (attribution and licence normalisation, previews and their size/host/redirect limits, cache and clearing, per-source failures with bounded retries, timeouts, rate limiting, empty and malformed answers, disabled sources, exact/near duplicates and input match, review decisions, manual pictures, sessions from jobs, owner isolation, no credentials sent, cancellation), exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
+| `src/frontend` | 84 | relation form parsing, fit summaries, collision order, exploded-view offsets, reconstruction states and route actions, stock-shape form parsing, job route, ranking order, visual/viewpoint grouping, suggestion and confidence labels, model API calls, reference filters, licence tones, source outcomes, reference API calls and routes, drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
 
 Backend tests replace the inference HTTP client with an in-memory fake, so they need no model, and
 the reference-search HTTP handler with a fake web and CLIP with a deterministic fake, so they never
@@ -232,6 +233,9 @@ variables (`Section__Key`). Key settings:
 | `PartDesign:MaxAnalysedParts` | 64 | further pieces are grouped as "fragments" |
 | `PartDesign:MaxPartsPerProject` / `MaxProjectsPerOwner` | 500 / 100 | parts count history (split, removed) too |
 | `PartDesign:MaxReleasesPerProject` | 50 | each release keeps its own zip |
+| `PartDesign:MaxRelationsPerProject` | 1000 | including removed ones kept for undo |
+| `PartDesign:ContactToleranceMm` | 0.05 | surfaces closer than this touch; shallower penetrations are not collisions |
+| `PartDesign:MaxCollisionTriangleTests` | 50000000 | per assembly check; beyond it the check is marked incomplete |
 | `Storage:ReferenceRootPath` | `data/references` | reference searches (input photo, previews); never touched by job retention |
 | `Storage:ReferenceCachePath` | `data/reference-cache` | disposable download cache; safe to delete at any time |
 | `ReferenceSearch:WikimediaEnabled` / `OpenverseEnabled` / `InternetArchiveEnabled` | `true` | turn individual sources off |
@@ -381,8 +385,35 @@ Limitations:
   capped; the split is refused unless you explicitly keep the open halves, which are then flagged.
 * Round stock shapes are 48-sided polygons whose corners lie on the nominal circle.
 * Not yet available: drawings for rods/tubes/curved parts, stock-length nesting for the cut list,
-  OBJ import, part relationships and assembly checks (collisions, connections, exploded view).
+  OBJ import, moving or rotating parts in the designer (parts stay where the model or the stock
+  shape put them).
   External binary GLB/STL files enter through a reference search (see *Getting the geometry*).
+
+### Assembly: relations, collisions, quality
+
+**Relations** say how two parts are joined: *glued*, *peg in hole* (part A is the peg), *tube over
+rod* (A is the tube), *nested* (B sits inside A) or *slot* (B is the sheet). For pegs, tubes and
+slots the clearance of the fit (opening minus inserted size, from your sizes or else the model's
+estimates) is checked against the project's fit-allowance range and reported as OK, too tight or
+too loose. Relations go through undo/redo; deleting or splitting a part removes its relations in
+the same step.
+
+**Check assembly** tests every pair of parts that are close, triangle against triangle: parts
+whose surfaces cross (*intersect*), a closed part wholly inside another, the same geometry twice in
+the same place (an unmoved duplicate), glued parts that do not touch. Surfaces within 0.05 mm
+count as touching. An overlap is reported as info instead of a warning when a relation allows it
+(*overlap allowed*, or *nested*). The same card lists the geometry quality of each part (closed,
+open and non-manifold edges) and how many are closed solids ready for STL. The **Exploded** slider
+in the viewer moves parts apart from the centre for viewing only.
+
+Packages and releases include `metadata/assembly.json` and `metadata/quality.json`, the manifest
+lists relation, fit and collision warnings, and **Compare releases** shows which parts were added,
+removed or changed (name, quantity, geometry, each specification field) between two releases.
+
+Limits: the check is exact for the triangles, but a generated model's pieces often overlap or float
+by design of the generator, so expect warnings there; containment is only tested for closed parts;
+large projects stop after `PartDesign:MaxCollisionTriangleTests` and say the check is incomplete.
+Fits use diameters and thicknesses as entered or estimated; they do not measure holes in the mesh.
 
 ### Fabrication drawings (sheet parts)
 
@@ -503,8 +534,17 @@ Verified on the development machine (Windows 10, CPU only):
   TripoSR GLB (23,744 triangles) created a part design in about 5 s without starting a job;
   manual geometry plus a 5/3 × 30 mm tube gave a closed, valid part and a package manifest.
 
+* Assembly checks against the real API on a copy of the development database (2026-10-23): a
+  reused TripoSR mesh (78,010 triangles, closed) with a 3 mm rod through it and a 5/3.2 mm tube on
+  the rod: the check took 0.5 s (15,948 triangle tests), found the rod–mesh intersection, reported
+  it as info once related as a peg with the overlap allowed, computed both fits (0.1 and 0.2 mm
+  clearance, OK), and a release (8 files, 3.2 MB) plus a second one compared as one changed part.
+  The development database was then backed up and migrated (7 jobs, 2 searches kept).
+
 Not verified:
 
+* The Phase 7 screens (relations, assembly check, exploded view, release comparison) in a
+  browser; they are covered by type checking, unit tests and the API tests only.
 * The Phase 6 screens (*Get the geometry*, *Add a stock shape*) in a browser; they are covered by
   type checking, unit tests and the API tests only.
 * A hybrid generation with the real SF3D/SPAR3D engine (tested with the fake inference client).

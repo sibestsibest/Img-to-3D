@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { designApi, urls } from '../../services/apiClient'
-import type { DesignPart, DesignRelease, ExportManifest } from '../../types/partDesign'
+import type { DesignPart, DesignRelease, ExportManifest, ReleaseDiff } from '../../types/partDesign'
 
 interface Props {
   projectId: string
@@ -29,6 +29,9 @@ export function ExportPanel({ projectId, parts, version }: Props) {
   const [note, setNote] = useState('')
   const [releasing, setReleasing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [compare, setCompare] = useState<{ from: number; to: number } | null>(null)
+  const [diff, setDiff] = useState<ReleaseDiff | null>(null)
+  const [comparing, setComparing] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -68,6 +71,19 @@ export function ExportPanel({ projectId, parts, version }: Props) {
     }
   }
 
+  const runCompare = async (from: number, to: number) => {
+    setComparing(true)
+    setError(null)
+    try {
+      setDiff(await designApi.compareReleases(projectId, from, to))
+    } catch (e) {
+      setDiff(null)
+      setError(e instanceof Error ? e.message : 'The releases could not be compared.')
+    } finally {
+      setComparing(false)
+    }
+  }
+
   const partName = (id: string | null) => (id ? (parts.find((p) => p.id === id)?.name ?? 'part') : 'project')
   const hasRodsOrTubes = parts.some((p) => p.state === 'Active' && (p.category === 'rod' || p.category === 'tube'))
 
@@ -103,6 +119,13 @@ export function ExportPanel({ projectId, parts, version }: Props) {
             {manifest.parts.length} part(s), {manifest.files.length} file(s), {formatBytes(manifest.files.reduce((s, f) => s + f.bytes, 0))}{' '}
             before compression.
           </p>
+          {manifest.assembly && (
+            <p className="small">
+              Assembly: {manifest.assembly.relationCount} relation(s), {manifest.assembly.collisionCount} collision warning(s)
+              {manifest.assembly.collisionCheckComplete ? '' : ' (check incomplete)'}; {manifest.assembly.solidExportReadyParts} of {manifest.parts.length} part(s) are
+              closed solids.
+            </p>
+          )}
           {manifest.warnings.length === 0 ? (
             <p className="success-text small">No warnings.</p>
           ) : (
@@ -151,6 +174,115 @@ export function ExportPanel({ projectId, parts, version }: Props) {
           ))}
         </ol>
       )}
+      {releases && releases.length >= 2 && (
+        <ReleaseCompare
+          releases={releases}
+          value={compare ?? { from: releases[1].revision, to: releases[0].revision }}
+          busy={comparing}
+          onChange={(v) => {
+            setCompare(v)
+            setDiff(null)
+          }}
+          onCompare={runCompare}
+          diff={diff}
+        />
+      )}
     </section>
+  )
+}
+
+const CHANGE_LABELS: Record<string, string> = {
+  name: 'name',
+  category: 'category',
+  quantity: 'quantity',
+  reviewStatus: 'review',
+  validationStatus: 'validation',
+  geometry: 'geometry',
+}
+
+function changeLabel(change: string): string {
+  return CHANGE_LABELS[change] ?? change.replace(/^spec\./, '').replace(/Mm$/, '').replace(/([A-Z])/g, ' $1').toLowerCase()
+}
+
+interface CompareProps {
+  releases: DesignRelease[]
+  value: { from: number; to: number }
+  busy: boolean
+  onChange: (value: { from: number; to: number }) => void
+  onCompare: (from: number, to: number) => void
+  diff: ReleaseDiff | null
+}
+
+/** Parts added, removed and changed between two stored releases, read from their manifests. */
+function ReleaseCompare({ releases, value, busy, onChange, onCompare, diff }: CompareProps) {
+  const select = (key: 'from' | 'to') => (
+    <select value={value[key]} disabled={busy} aria-label={key === 'from' ? 'Older release' : 'Newer release'} onChange={(e) => onChange({ ...value, [key]: Number(e.target.value) })}>
+      {releases.map((r) => (
+        <option key={r.id} value={r.revision}>
+          Rev {r.revision}
+        </option>
+      ))}
+    </select>
+  )
+  const shown = diff && diff.fromRevision === value.from && diff.toRevision === value.to ? diff : null
+  return (
+    <div className="release-diff">
+      <h3>Compare releases</h3>
+      <div className="part-props__actions">
+        {select('from')} → {select('to')}
+        <button type="button" className="btn btn--small" disabled={busy || value.from === value.to} onClick={() => onCompare(value.from, value.to)}>
+          {busy ? 'Comparing…' : 'Compare'}
+        </button>
+      </div>
+      {shown && (
+        <div>
+          {shown.added.length + shown.removed.length + shown.changed.length === 0 && <p className="small">No part changed.</p>}
+          {shown.added.length > 0 && (
+            <>
+              <strong>Added</strong>
+              <ul>
+                {shown.added.map((p) => (
+                  <li key={p.id}>
+                    {p.name} <span className="muted">({p.category}, ×{p.quantity})</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {shown.removed.length > 0 && (
+            <>
+              <strong>Removed</strong>
+              <ul>
+                {shown.removed.map((p) => (
+                  <li key={p.id}>{p.name}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          {shown.changed.length > 0 && (
+            <>
+              <strong>Changed</strong>
+              <ul>
+                {shown.changed.map((p) => (
+                  <li key={p.id}>
+                    {p.name}: {p.changes.map(changeLabel).join(', ')}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <p className="muted small">
+            {shown.unchangedCount} part(s) unchanged.
+            {shown.relationsCompared && ` Relations: ${shown.relationsAdded} added, ${shown.relationsRemoved} removed, ${shown.relationsChanged} changed.`}
+            {` Warnings: ${shown.warningsBefore} → ${shown.warningsAfter}.`}
+          </p>
+          {shown.notes.map((n) => (
+            <p key={n} className="muted small">
+              {n}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

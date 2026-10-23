@@ -580,6 +580,12 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("RelationChangesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
+
                     b.Property<int>("Sequence")
                         .HasColumnType("INTEGER");
 
@@ -594,6 +600,49 @@ namespace ImageTo3D.Api.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("PartOperations", (string)null);
+                });
+
+            modelBuilder.Entity("ImageTo3D.Api.Models.PartRelation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AllowOverlap")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsRemoved")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("OpeningSizeMm")
+                        .HasColumnType("REAL");
+
+                    b.Property<Guid>("PartAId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PartBId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.ToTable("PartRelations", (string)null);
                 });
 
             modelBuilder.Entity("ImageTo3D.Api.Models.ReferenceCandidate", b =>
@@ -954,6 +1003,15 @@ namespace ImageTo3D.Api.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ImageTo3D.Api.Models.PartRelation", b =>
+                {
+                    b.HasOne("ImageTo3D.Api.Models.PartDesignProject", null)
+                        .WithMany("Relations")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ImageTo3D.Api.Models.ReferenceCandidate", b =>
                 {
                     b.HasOne("ImageTo3D.Api.Models.ReferenceSession", null)
@@ -968,6 +1026,8 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.Navigation("Operations");
 
                     b.Navigation("Parts");
+
+                    b.Navigation("Relations");
                 });
 
             modelBuilder.Entity("ImageTo3D.Api.Models.ReferenceSession", b =>

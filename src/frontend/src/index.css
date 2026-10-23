@@ -1605,3 +1605,83 @@ details.card summary {
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 0.5rem 0.8rem;
 }
+
+/* ---- Assembly (relations, collisions, quality, exploded view) ---- */
+
+.relation-list {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.relation {
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  background: var(--bg);
+  border-left: 3px solid var(--success);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.relation--warning {
+  border-left-color: var(--warning);
+}
+
+.relation--invalid {
+  border-left-color: var(--danger);
+}
+
+.relation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.assembly-panel h3 {
+  margin-top: 0.75rem;
+}
+
+.quality-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.quality-table th,
+.quality-table td {
+  text-align: left;
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.quality-table th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.viewer__explode {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.viewer__explode input {
+  width: 7rem;
+}
+
+.release-diff {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.release-diff ul {
+  margin: 0.2rem 0 0.4rem;
+  padding-left: 1.1rem;
+}

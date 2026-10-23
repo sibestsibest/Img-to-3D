@@ -109,6 +109,18 @@ public sealed class PartDesignOptions
     /// <summary>Stored releases per project; each keeps its own zip, so this bounds disk use.</summary>
     [Range(1, 1000)]
     public int MaxReleasesPerProject { get; set; } = 50;
+
+    /// <summary>Relations per project, including removed ones kept for undo.</summary>
+    [Range(1, 10_000)]
+    public int MaxRelationsPerProject { get; set; } = 1000;
+
+    /// <summary>Surfaces closer than this count as touching; a penetration shallower than it is not a collision.</summary>
+    [Range(0.0001, 1.0)]
+    public double ContactToleranceMm { get; set; } = 0.05;
+
+    /// <summary>Triangle-pair tests per assembly check; beyond it the check stops and says it is incomplete.</summary>
+    [Range(1000, 1_000_000_000)]
+    public long MaxCollisionTriangleTests { get; set; } = 50_000_000;
 }
 
 /// <summary>

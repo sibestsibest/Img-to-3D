@@ -132,7 +132,16 @@ to be millimetres and converted from Z-up). Every mutating call returns the full
 Project: `{ id, name, sourceJobId (null unless made from a job), sourceFileName, source { kind:
 generation_job|reference_model|none, jobId, referenceSessionId, modelCandidateId, fileName,
 license, attribution }, mmPerModelUnit, scaleStatus, coordinateSystem, fitAllowanceMinMm,
-fitAllowanceMaxMm, createdAt, updatedAt, issues[], parts[], history[], canUndo, canRedo, units }`.
+fitAllowanceMaxMm, createdAt, updatedAt, issues[], parts[], relations[], history[], canUndo, canRedo, units }`.
+
+Relation: `{ id, partAId, partBId, kind, allowOverlap, openingSizeMm, note, fit { status:
+ok|too_tight|too_loose|unknown|not_applicable, openingMm, insertedMm, clearanceMm, basis:
+specified|estimated }, validation, units }`. `kind` and the roles of A and B: `glued` (glued face to
+face), `peg_in_hole` (A is the peg; the hole is `openingSizeMm`, or B's bore when B is a tube),
+`tube_over_rod` (A is the tube), `nested` (B sits inside A) and `slot` (B is the sheet; the slot
+width is `openingSizeMm`). The clearance is opening minus inserted size (negative = interference)
+and is compared with the project's `fitAllowanceMinMm`..`fitAllowanceMaxMm`; specified sizes are
+used before the model's estimates (`basis: estimated`).
 
 | Method | Path | Notes |
 |---|---|---|
@@ -148,7 +157,11 @@ fitAllowanceMaxMm, createdAt, updatedAt, issues[], parts[], history[], canUndo, 
 | DELETE | `/api/part-designs/{id}/parts/{partId}` | Marks the part removed (undoable) |
 | POST | `/api/part-designs/{id}/parts/{partId}/split/preview` | `{ point: [x,y,z], normal: [x,y,z] }` → contours, caps, per-side volume and whether both halves are closed. Nothing is saved |
 | POST | `/api/part-designs/{id}/parts/{partId}/split` | Same body plus `allowOpenResult`. Two new parts; the original becomes `Superseded`. `400 plane_misses_part` / `invalid_plane`; `409 split_not_closed` unless `allowOpenResult` |
-| POST | `/api/part-designs/{id}/undo`, `/redo` | `409 nothing_to_undo` / `nothing_to_redo`. A new edit after undo discards the redo branch |
+| POST | `/api/part-designs/{id}/relations` | JSON `{ partAId, partBId, kind, allowOverlap?, openingSizeMm? (0.01–1000), note? (≤ 500) }`. Undoable (`relate`). `400 relation_self` or validation errors, `404` unknown part, `409 part_not_active`, `409 relation_exists` (the pair, in either order, is already related), `409 too_many_relations` (`PartDesign:MaxRelationsPerProject`, default 1000) |
+| PUT | `/api/part-designs/{id}/relations/{relationId}` | JSON `{ kind, allowOverlap, openingSizeMm, note }` (the parts cannot change). Undoable (`edit_relation`) |
+| DELETE | `/api/part-designs/{id}/relations/{relationId}` | Marks the relation removed (undoable, `unrelate`); `409 relation_not_active` if already removed. Deleting or splitting a part removes its relations in the same history step |
+| GET | `/api/part-designs/{id}/assembly` | Assembly check computed now (`no-store`): `{ status, checkedAt, historySequence, contactToleranceMm, pairsChecked, triangleTests, complete, relations[], collisions[], quality, issues[] }`. Every pair of active parts whose boxes meet is tested triangle against triangle (BVH); surfaces closer than `PartDesign:ContactToleranceMm` (0.05 mm) touch. Collision `contact`: `intersecting` (surfaces cross; `intersectionLengthMm` is the length of the intersection curve), `contained` (one closed solid wholly inside the other, by ray parity; open meshes are not tested), `coincident` (same geometry in the same place, e.g. an unmoved duplicate), `touching`, or `gap` for a glued relation whose parts do not meet. Severity is `warning` unless a relation explains it (`allowOverlap` or `nested` → `overlap_allowed`, glued faces touching → `glued_contact`, both `info`). Stops after `PartDesign:MaxCollisionTriangleTests` tests with `complete: false` and `collision_check_incomplete`. `quality`: per active part `{ status, closed, boundaryEdges, nonManifoldEdges, inconsistentEdges, degenerateTriangles, components, triangles, volumeMm3, solidExportReady, collisionCount, issueCodes }` plus project totals |
+| POST | `/api/part-designs/{id}/undo`, `/redo` | `409 nothing_to_undo` / `nothing_to_redo`. Undoes part and relation changes alike. A new edit after undo discards the redo branch (relations it created are deleted) |
 | GET | `/api/part-designs/{id}/parts/{partId}/geometry` | GLB in metres, design coordinates; immutable per part ID |
 | GET | `/api/part-designs/{id}/parts/{partId}/drawing/report` | Sheet parts only. Page, outline size, thickness (`specified` or `estimated`), holes (centre from the outline's lower-left corner, diameter when round) and every outline and drawing check. `409 drawing_unsupported` (not a sheet), `422 outline_failed` (not flat, open surface) or `422 part_too_large_for_page` (larger than A3 at 1:1) |
 | GET | `/api/part-designs/{id}/parts/{partId}/drawing?format=svg\|pdf\|dxf&download=` | 1:1 cutting sheet. SVG: `width`/`height` in mm equal to the `viewBox` (1 unit = 1 mm), groups `cut` (cutting contours only), `annotation`, `reference` (100 mm bar). PDF: vector, page in whole points (A4 = 595 x 842), text as outlines, no embedded fonts. DXF (`image/vnd.dxf`): ASCII R12, `$INSUNITS` 4 (mm), model space with the origin at the outline's lower-left corner; layer `CUT` = closed polylines of the outer contours and holes only, layer `ANNOTATION` = hole labels and a description under the part. The DXF does not depend on a page, so it is also served for parts larger than A3. Title block / DXF text say `Draft`. `Cache-Control: no-store`, `nosniff`, restrictive CSP. Same errors as the report, plus `400 invalid_format` |
@@ -159,6 +172,7 @@ fitAllowanceMaxMm, createdAt, updatedAt, issues[], parts[], history[], canUndo, 
 | GET | `/api/part-designs/{id}/export/package` | Draft package (zip), built now and not stored. `409 nothing_to_export` (no active part) or `409 export_blocked` (a part has a validation error, e.g. tube inner ≥ outer) |
 | GET | `/api/part-designs/{id}/releases` | Stored releases, newest first: `{ id, revision, note, sizeBytes, sha256, historySequence, partCount, fileCount, warningCount, createdAt }` |
 | POST | `/api/part-designs/{id}/releases` | JSON `{ note? }` (≤ 500 chars). Builds the next numbered package (`revision` 1, 2, 3… per project), stores the zip and returns `201` with the release. Drawings and DXFs inside say `Rev N`. Same `409` errors as the draft package, plus `409 too_many_releases` (`PartDesign:MaxReleasesPerProject`, default 50) and `409 release_conflict` (concurrent release; retry) |
+| GET | `/api/part-designs/{id}/releases/compare?from=&to=` | Compares two stored releases from their manifests: `{ fromRevision, toRevision, added[], removed[], changed[] { id, name, changes[] }, unchangedCount, specCompared, relationsCompared, relationsAdded, relationsRemoved, relationsChanged, warningsBefore, warningsAfter, notes[] }`. `changes` holds `name`, `category`, `quantity`, `reviewStatus`, `validationStatus`, `geometry` (STL hash) and `spec.<field>`; spec fields and relations are only compared when both packages carry them (releases made before Phase 7 do not). `404` for an unknown revision |
 | GET | `/api/part-designs/{id}/releases/{revision}/package` | The stored zip, byte for byte (its SHA-256 equals the release's `sha256`), whatever was edited or undone since. `404` for an unknown revision |
 
 Part fields worth knowing: `category` ∈ `sheet, rod, tube, stock_part, custom_3d, needs_review`
@@ -174,9 +188,13 @@ revision label on drawings):
 manifest.json            schemaVersion 1; kind draft|release; revision; note; createdAt (UTC); units "mm";
                          project { id, name, sourceJobId, sourceFileName, source (as above),
                          mmPerModelUnit, scaleStatus, historySequence, updatedAt }; parts[] { item, id, name, category, reviewStatus,
-                         validationStatus, quantity, files[] }; files[] { path, kind, partId, bytes, sha256 };
-                         warnings[] { code, severity, message, partId }
+                         validationStatus, quantity, files[], spec, geometrySha256 }; files[] { path, kind, partId, bytes, sha256 };
+                         warnings[] { code, severity, message, partId } (including relation, fit and collision warnings);
+                         assembly { status, relationCount, collisionCount, collisionCheckComplete, qualityStatus,
+                         solidExportReadyParts }
 README.txt               contents and printing instructions
+metadata/assembly.json   the assembly check (relations with fits, collisions, issues; quality totals)
+metadata/quality.json    geometry quality per part
 bom.csv, cut-list.csv    as the endpoints above
 drawings/NN-<name>-<id8>.pdf|svg|dxf   sheet parts
 stl/NN-<name>-<id8>.stl                every part, millimetres

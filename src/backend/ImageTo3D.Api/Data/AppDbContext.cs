@@ -13,6 +13,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<PartOperation> PartOperations => Set<PartOperation>();
 
+    public DbSet<PartRelation> PartRelations => Set<PartRelation>();
+
     public DbSet<DesignRelease> DesignReleases => Set<DesignRelease>();
 
     public DbSet<ReferenceSession> ReferenceSessions => Set<ReferenceSession>();
@@ -61,6 +63,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         project.HasIndex(p => new { p.OwnerKeyHash, p.UpdatedAt });
         project.HasMany(p => p.Parts).WithOne().HasForeignKey(p => p.ProjectId).OnDelete(DeleteBehavior.Cascade);
         project.HasMany(p => p.Operations).WithOne().HasForeignKey(o => o.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        project.HasMany(p => p.Relations).WithOne().HasForeignKey(r => r.ProjectId).OnDelete(DeleteBehavior.Cascade);
 
         var part = modelBuilder.Entity<DesignPart>();
         part.ToTable("DesignParts");
@@ -86,6 +89,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         operation.Property(o => o.Kind).HasMaxLength(16);
         operation.Property(o => o.Summary).HasMaxLength(200);
         operation.HasIndex(o => new { o.ProjectId, o.Sequence }).IsUnique();
+        operation.Property(o => o.RelationChangesJson).HasDefaultValue("[]");
+
+        // No foreign keys to the parts: like parts, relations are only marked removed, and the
+        // history may refer to parts that a discarded redo branch deleted.
+        var relation = modelBuilder.Entity<PartRelation>();
+        relation.ToTable("PartRelations");
+        relation.HasKey(r => r.Id);
+        relation.Property(r => r.Kind).HasMaxLength(16).IsRequired();
+        relation.Property(r => r.Note).HasMaxLength(500);
+        relation.HasIndex(r => r.ProjectId);
 
         // Not loaded with the project (releases are listed separately); the database cascades the delete.
         var release = modelBuilder.Entity<DesignRelease>();

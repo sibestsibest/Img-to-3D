@@ -100,6 +100,33 @@ public sealed class PartDesignsController(PartDesignService designs) : Controlle
     public Task<PartDesignProjectDto> Split(Guid id, Guid partId, [FromBody] SplitRequest request, CancellationToken cancellationToken) =>
         designs.SplitAsync(id, partId, request, cancellationToken);
 
+    /// <summary>Relate two active parts (glued, peg_in_hole, tube_over_rod, nested, slot); reversible with undo.</summary>
+    [HttpPost("{id:guid}/relations")]
+    [Consumes("application/json")]
+    [ProducesResponseType<PartDesignProjectDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public Task<PartDesignProjectDto> AddRelation(Guid id, [FromBody] CreateRelationRequest request, CancellationToken cancellationToken) =>
+        designs.AddRelationAsync(id, request, cancellationToken);
+
+    [HttpPut("{id:guid}/relations/{relationId:guid}")]
+    [Consumes("application/json")]
+    public Task<PartDesignProjectDto> UpdateRelation(Guid id, Guid relationId, [FromBody] UpdateRelationRequest request, CancellationToken cancellationToken) =>
+        designs.UpdateRelationAsync(id, relationId, request, cancellationToken);
+
+    [HttpDelete("{id:guid}/relations/{relationId:guid}")]
+    public Task<PartDesignProjectDto> RemoveRelation(Guid id, Guid relationId, CancellationToken cancellationToken) =>
+        designs.RemoveRelationAsync(id, relationId, cancellationToken);
+
+    /// <summary>Assembly validation computed now: relation fits, collisions between all active parts, and geometry quality.</summary>
+    [HttpGet("{id:guid}/assembly")]
+    [ProducesResponseType<AssemblyReportDto>(StatusCodes.Status200OK)]
+    public async Task<AssemblyReportDto> Assembly(Guid id, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return await designs.AssemblyReportAsync(id, cancellationToken);
+    }
+
     [HttpPost("{id:guid}/undo")]
     public Task<PartDesignProjectDto> Undo(Guid id, CancellationToken cancellationToken) => designs.UndoAsync(id, cancellationToken);
 
@@ -177,6 +204,13 @@ public sealed class PartDesignsController(PartDesignService designs) : Controlle
         var release = await designs.CreateReleaseAsync(id, request, cancellationToken);
         return CreatedAtAction(nameof(ReleasePackage), new { id, revision = release.Revision }, release);
     }
+
+    /// <summary>What changed between two stored releases: parts added, removed and changed, and relations.</summary>
+    [HttpGet("{id:guid}/releases/compare")]
+    [ProducesResponseType<ReleaseDiffDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public Task<ReleaseDiffDto> CompareReleases(Guid id, [FromQuery] int from, [FromQuery] int to, CancellationToken cancellationToken) =>
+        designs.CompareReleasesAsync(id, from, to, cancellationToken);
 
     /// <summary>The stored package of a release, byte for byte as it was created.</summary>
     [HttpGet("{id:guid}/releases/{revision:int}/package")]

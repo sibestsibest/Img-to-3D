@@ -3,6 +3,7 @@ import { Canvas, type ThreeEvent } from '@react-three/fiber'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { DoubleSide, Mesh, MeshStandardMaterial, type Object3D } from 'three'
 import { urls } from '../../services/apiClient'
+import { explodedOffsets } from '../../services/assemblyState'
 import type { Axis } from '../../services/partDesignState'
 import type { DesignPart } from '../../types/partDesign'
 import { StudioEnvironment, ViewerErrorBoundary } from '../ModelViewer'
@@ -25,6 +26,8 @@ interface Props {
 export function PartViewport({ projectId, parts, selectedId, plane, onSelect }: Props) {
   const [wireframe, setWireframe] = useState(false)
   const [fitToken, setFitToken] = useState(0)
+  const [explode, setExplode] = useState(0)
+  const offsets = useMemo(() => explodedOffsets(parts, explode), [parts, explode])
 
   // Refit when the set of parts changes (split, delete, isolate), not on every selection.
   const partKey = parts.map((p) => p.id).join(',')
@@ -48,6 +51,10 @@ export function PartViewport({ projectId, parts, selectedId, plane, onSelect }: 
           <input type="checkbox" checked={wireframe} onChange={(e) => setWireframe(e.target.checked)} />
           Wireframe
         </label>
+        <label className="viewer__explode" title="Display only: moves parts apart from the centre of the assembly; geometry and exports do not change.">
+          Exploded
+          <input type="range" min={0} max={1.5} step={0.05} value={explode} onChange={(e) => setExplode(Number(e.target.value))} aria-label="Exploded view" />
+        </label>
       </div>
 
       <ViewerErrorBoundary key={projectId}>
@@ -61,22 +68,22 @@ export function PartViewport({ projectId, parts, selectedId, plane, onSelect }: 
             <Bounds fit clip observe margin={1.4}>
               <Refit token={fitToken} />
               {parts.map((p) => (
-                <PartMesh key={p.id} url={urls.partGeometry(projectId, p.id)} selected={p.id === selectedId} wireframe={wireframe} onSelect={() => onSelect(p.id)} />
+                <PartMesh key={p.id} url={urls.partGeometry(projectId, p.id)} offset={offsets.get(p.id)} selected={p.id === selectedId} wireframe={wireframe} onSelect={() => onSelect(p.id)} />
               ))}
             </Bounds>
-            {planePart && plane && <CutPlane part={planePart} axis={plane.axis} offsetMm={plane.offsetMm} />}
+            {planePart && plane && <CutPlane part={planePart} axis={plane.axis} offsetMm={plane.offsetMm} shift={offsets.get(planePart.id)} />}
           </Suspense>
           <Grid args={[extent * 3, extent * 3]} cellSize={extent / 20} sectionSize={extent / 4} cellColor="#c5cad3" sectionColor="#9aa1ad" fadeDistance={extent * 6} />
           <OrbitControls makeDefault enableDamping />
         </Canvas>
       </ViewerErrorBoundary>
       {parts.length === 0 && <div className="viewer__loading">No visible parts</div>}
-      <div className="viewer__dims">Derived parts · millimetres in the panels, estimated scale</div>
+      <div className="viewer__dims">Derived parts · millimetres in the panels, estimated scale{explode > 0 ? ' · exploded view (display only)' : ''}</div>
     </div>
   )
 }
 
-function PartMesh({ url, selected, wireframe, onSelect }: { url: string; selected: boolean; wireframe: boolean; onSelect: () => void }) {
+function PartMesh({ url, offset, selected, wireframe, onSelect }: { url: string; offset?: [number, number, number]; selected: boolean; wireframe: boolean; onSelect: () => void }) {
   const { scene } = useGLTF(url)
   const object = useMemo(() => scene.clone(true), [scene])
 
@@ -101,16 +108,18 @@ function PartMesh({ url, selected, wireframe, onSelect }: { url: string; selecte
     onSelect()
   }
 
-  return <primitive object={object} onClick={click} />
+  return <primitive object={object} position={offset ?? [0, 0, 0]} onClick={click} />
 }
 
 /** Translucent preview of the cutting plane, sized to the part it will cut. Visual only: the cut runs on the server. */
-function CutPlane({ part, axis, offsetMm }: { part: DesignPart; axis: Axis; offsetMm: number }) {
+function CutPlane({ part, axis, offsetMm, shift }: { part: DesignPart; axis: Axis; offsetMm: number; shift?: [number, number, number] }) {
   const b = part.geometry.bounds
   const pad = 1.15 / 1000
   const center: [number, number, number] = [((b.min.x + b.max.x) / 2) / 1000, ((b.min.y + b.max.y) / 2) / 1000, ((b.min.z + b.max.z) / 2) / 1000]
   const position: [number, number, number] = [...center]
   position[axis === 'x' ? 0 : axis === 'y' ? 1 : 2] = offsetMm / 1000
+  // Follow the part when the view is exploded.
+  if (shift) for (let i = 0; i < 3; i++) position[i] += shift[i]
   // PlaneGeometry lies in XY (normal +Z); rotate it so its normal follows the cutting axis.
   const rotation: [number, number, number] = axis === 'x' ? [0, Math.PI / 2, 0] : axis === 'y' ? [-Math.PI / 2, 0, 0] : [0, 0, 0]
   const size: [number, number] =

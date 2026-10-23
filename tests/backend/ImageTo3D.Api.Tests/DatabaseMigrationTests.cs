@@ -106,7 +106,7 @@ public class DatabaseMigrationTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Empty(db.Database.GetPendingMigrations());
-        Assert.Equal(6, db.Database.GetAppliedMigrations().Count());
+        Assert.Equal(7, db.Database.GetAppliedMigrations().Count());
         // WAL lets the background worker and requests write concurrently (EnsureCreated used to set it).
         Assert.Equal("wal", db.Database.SqlQueryRaw<string>("SELECT journal_mode AS \"Value\" FROM pragma_journal_mode").AsEnumerable().Single());
     }

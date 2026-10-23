@@ -13,7 +13,7 @@ export interface Issue {
   code: string
   severity: 'info' | 'warning' | 'error'
   message: string
-  source: 'geometry' | 'manufacturing' | 'analysis' | 'split'
+  source: 'geometry' | 'manufacturing' | 'analysis' | 'split' | 'assembly'
 }
 
 export interface Vec3 {
@@ -66,7 +66,7 @@ export interface DesignPart {
   parentPartId: string | null
   sortOrder: number
   name: string
-  origin: 'node' | 'component' | 'fragments' | 'split' | 'duplicate'
+  origin: 'node' | 'component' | 'fragments' | 'split' | 'duplicate' | 'primitive'
   sourceNodeName: string | null
   state: PartState
   category: PartCategory
@@ -123,6 +123,7 @@ export interface PartDesignProject {
   updatedAt: string
   issues: Issue[]
   parts: DesignPart[]
+  relations: PartRelation[]
   history: Operation[]
   canUndo: boolean
   canRedo: boolean
@@ -240,7 +241,7 @@ export type DrawingFormat = 'svg' | 'pdf' | 'dxf'
 
 export interface ManifestFile {
   path: string
-  kind: 'drawing-pdf' | 'drawing-svg' | 'drawing-dxf' | 'stl' | 'bom' | 'cut-list' | 'readme'
+  kind: 'drawing-pdf' | 'drawing-svg' | 'drawing-dxf' | 'stl' | 'bom' | 'cut-list' | 'readme' | 'assembly' | 'quality'
   partId: string | null
   bytes: number
   sha256: string
@@ -278,6 +279,8 @@ export interface ExportManifest {
   parts: ManifestPart[]
   files: ManifestFile[]
   warnings: ManifestWarning[]
+  /** Null in packages made before assembly checks. */
+  assembly: { status: ValidationStatus; relationCount: number; collisionCount: number; collisionCheckComplete: boolean; qualityStatus: ValidationStatus; solidExportReadyParts: number } | null
 }
 
 /** A stored, numbered export package; its zip never changes. */
@@ -292,4 +295,130 @@ export interface DesignRelease {
   fileCount: number
   warningCount: number
   createdAt: string
+}
+
+// ---- Assembly (Phase 7) ----
+
+/** glued: A and B glued face to face; peg_in_hole: A is the peg; tube_over_rod: A is the tube; nested: B inside A; slot: B is the sheet. */
+export type RelationKind = 'glued' | 'peg_in_hole' | 'tube_over_rod' | 'nested' | 'slot'
+
+export interface Fit {
+  status: 'ok' | 'too_tight' | 'too_loose' | 'unknown' | 'not_applicable'
+  openingMm: number | null
+  insertedMm: number | null
+  /** Opening minus inserted size; negative means interference. */
+  clearanceMm: number | null
+  basis: 'specified' | 'estimated' | null
+}
+
+export interface PartRelation {
+  id: string
+  partAId: string
+  partBId: string
+  kind: RelationKind
+  allowOverlap: boolean
+  openingSizeMm: number | null
+  note: string | null
+  fit: Fit
+  validation: { status: ValidationStatus; issues: Issue[] }
+  units: 'mm'
+}
+
+export interface RelationRequest {
+  kind: RelationKind
+  allowOverlap: boolean
+  openingSizeMm: number | null
+  note: string | null
+}
+
+export interface CreateRelationRequest extends RelationRequest {
+  partAId: string
+  partBId: string
+}
+
+export type ContactKind = 'intersecting' | 'contained' | 'coincident' | 'touching' | 'gap'
+
+export interface Collision {
+  partAId: string
+  partBId: string
+  contact: ContactKind
+  containedPartId: string | null
+  code: string
+  severity: 'info' | 'warning' | 'error'
+  message: string
+  relationId: string | null
+  intersectionLengthMm: number
+  crossingTriangles: number
+  overlapBounds: Bounds | null
+  complete: boolean
+}
+
+export interface PartQuality {
+  partId: string
+  name: string
+  status: ValidationStatus
+  closed: boolean
+  boundaryEdges: number
+  nonManifoldEdges: number
+  inconsistentEdges: number
+  degenerateTriangles: number
+  components: number
+  triangles: number
+  volumeMm3: number | null
+  /** Closed, manifold, consistently oriented, no degenerate triangles. Says nothing about size. */
+  solidExportReady: boolean
+  collisionCount: number
+  issueCodes: string[]
+}
+
+export interface QualityReport {
+  status: ValidationStatus
+  partCount: number
+  validParts: number
+  warningParts: number
+  invalidParts: number
+  solidExportReadyParts: number
+  totalTriangles: number
+  totalVolumeMm3: number | null
+  parts: PartQuality[]
+}
+
+/** GET /api/part-designs/{id}/assembly: computed on request from the part geometry. */
+export interface AssemblyReport {
+  status: ValidationStatus
+  checkedAt: string
+  historySequence: number
+  contactToleranceMm: number
+  pairsChecked: number
+  triangleTests: number
+  complete: boolean
+  relations: PartRelation[]
+  collisions: Collision[]
+  quality: QualityReport
+  issues: Issue[]
+  units: 'mm'
+}
+
+export interface ReleasePartRef {
+  id: string
+  name: string
+  category: string
+  quantity: number
+}
+
+export interface ReleaseDiff {
+  fromRevision: number
+  toRevision: number
+  added: ReleasePartRef[]
+  removed: ReleasePartRef[]
+  changed: { id: string; name: string; changes: string[] }[]
+  unchangedCount: number
+  specCompared: boolean
+  relationsCompared: boolean
+  relationsAdded: number
+  relationsRemoved: number
+  relationsChanged: number
+  warningsBefore: number
+  warningsAfter: number
+  notes: string[]
 }

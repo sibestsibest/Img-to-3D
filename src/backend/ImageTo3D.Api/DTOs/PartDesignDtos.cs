@@ -106,6 +106,7 @@ public sealed record PartDesignProjectDto(
     DateTime UpdatedAt,
     IReadOnlyList<IssueDto> Issues,
     IReadOnlyList<DesignPartDto> Parts,
+    IReadOnlyList<PartRelationDto> Relations,
     IReadOnlyList<OperationDto> History,
     bool CanUndo,
     bool CanRedo,
@@ -312,6 +313,10 @@ public sealed record SplitPreviewDto(
 /// <summary>One file inside an export package; <c>PartId</c> is null for project-level files (BOM, cut list, README).</summary>
 public sealed record ManifestFileDto(string Path, string Kind, Guid? PartId, long Bytes, string Sha256);
 
+/// <summary>
+/// A part in a package. <c>Spec</c> and <c>GeometrySha256</c> (SHA-256 of its STL) let two releases be
+/// compared field by field; packages made before they existed have them null.
+/// </summary>
 public sealed record ManifestPartDto(
     int Item,
     Guid Id,
@@ -320,7 +325,9 @@ public sealed record ManifestPartDto(
     string ReviewStatus,
     string ValidationStatus,
     int Quantity,
-    IReadOnlyList<string> Files);
+    IReadOnlyList<string> Files,
+    ManufacturingSpecDto? Spec = null,
+    string? GeometrySha256 = null);
 
 /// <summary>Something the workshop should know before using the package; <c>PartId</c> is null for project-level notes.</summary>
 public sealed record ManifestWarningDto(string Code, string Severity, string Message, Guid? PartId);
@@ -352,7 +359,20 @@ public sealed record ExportManifestDto(
     ManifestProjectDto Project,
     IReadOnlyList<ManifestPartDto> Parts,
     IReadOnlyList<ManifestFileDto> Files,
-    IReadOnlyList<ManifestWarningDto> Warnings);
+    IReadOnlyList<ManifestWarningDto> Warnings,
+    ManifestAssemblyDto? Assembly = null);
+
+/// <summary>
+/// Summary of <c>metadata/assembly.json</c> (relations, fits, collisions) and <c>metadata/quality.json</c>
+/// (geometry quality per part) in the package; null in packages made before assembly checks existed.
+/// </summary>
+public sealed record ManifestAssemblyDto(
+    string Status,
+    int RelationCount,
+    int CollisionCount,
+    bool CollisionCheckComplete,
+    string QualityStatus,
+    int SolidExportReadyParts);
 
 public sealed record DesignReleaseDto(
     Guid Id,

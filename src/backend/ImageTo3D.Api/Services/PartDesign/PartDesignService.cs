@@ -408,7 +408,7 @@ public sealed partial class PartDesignService(
         var before = Snapshot(part);
         var after = before with { State = DesignPartState.Removed };
         Apply(part, after);
-        await RecordAsync(project, "delete", $"Deleted '{Truncate(part.Name, 60)}'", [new PartChange(part.Id, before, after)], cancellationToken);
+        await RecordAsync(project, "delete", $"Deleted '{Truncate(part.Name, 60)}'", [new PartChange(part.Id, before, after)], cancellationToken, DetachRelations(project, part.Id));
         return ToDto(project);
     }
 
@@ -465,7 +465,9 @@ public sealed partial class PartDesignService(
 
         foreach (var (name, content) in files)
             await store.SaveAsync(project.Id, name, content, cancellationToken);
-        await RecordAsync(project, "split", $"Split '{Truncate(part.Name, 60)}'", changes, cancellationToken);
+        // The halves are new parts: joints of the original no longer say which half they meet, so
+        // they are removed with the split (and come back with undo).
+        await RecordAsync(project, "split", $"Split '{Truncate(part.Name, 60)}'", changes, cancellationToken, DetachRelations(project, part.Id));
         return ToDto(project);
     }
 
@@ -483,6 +485,15 @@ public sealed partial class PartDesignService(
                 Apply(part, change.Before);
         }
 
+        foreach (var change in RelationChanges(operation))
+        {
+            var relation = project.Relations.Single(r => r.Id == change.RelationId);
+            if (change.Before is null)
+                relation.IsRemoved = true;
+            else
+                Apply(relation, change.Before);
+        }
+
         operation.IsUndone = true;
         project.UpdatedAt = time.GetUtcNow().UtcDateTime;
         await db.SaveChangesAsync(cancellationToken);
@@ -496,6 +507,8 @@ public sealed partial class PartDesignService(
                         ?? throw new ApiException(StatusCodes.Status409Conflict, "nothing_to_redo", "There is nothing to redo.");
         foreach (var change in Changes(operation))
             Apply(project.Parts.Single(p => p.Id == change.PartId), change.After);
+        foreach (var change in RelationChanges(operation))
+            Apply(project.Relations.Single(r => r.Id == change.RelationId), change.After);
 
         operation.IsUndone = false;
         project.UpdatedAt = time.GetUtcNow().UtcDateTime;
@@ -841,10 +854,11 @@ public sealed partial class PartDesignService(
     /// Appends an operation. Undone operations are discarded first (a new edit ends the redo
     /// branch); parts that only those operations had created are deleted with their files.
     /// </summary>
-    private async Task RecordAsync(PartDesignProject project, string kind, string summary, List<PartChange> changes, CancellationToken cancellationToken)
+    private async Task RecordAsync(PartDesignProject project, string kind, string summary, List<PartChange> changes, CancellationToken cancellationToken, List<RelationChange>? relationChanges = null)
     {
         var discarded = project.Operations.Where(o => o.IsUndone).ToList();
         var orphanFiles = new HashSet<string>(StringComparer.Ordinal);
+        var deletedParts = new HashSet<Guid>();
         foreach (var operation in discarded)
         {
             foreach (var change in Changes(operation).Where(c => c.Before is null))
@@ -855,11 +869,22 @@ public sealed partial class PartDesignService(
                 project.Parts.Remove(part);
                 db.DesignParts.Remove(part);
                 orphanFiles.Add(part.GeometryFile);
+                deletedParts.Add(part.Id);
+            }
+
+            foreach (var change in RelationChanges(operation).Where(c => c.Before is null))
+            {
+                if (project.Relations.FirstOrDefault(r => r.Id == change.RelationId) is { } relation)
+                    DeleteRelation(project, relation);
             }
 
             project.Operations.Remove(operation);
             db.PartOperations.Remove(operation);
         }
+
+        // A relation can only outlive its parts as a removed record; drop those that lost a part for good.
+        foreach (var relation in project.Relations.Where(r => deletedParts.Contains(r.PartAId) || deletedParts.Contains(r.PartBId)).ToList())
+            DeleteRelation(project, relation);
 
         var now = time.GetUtcNow().UtcDateTime;
         var next = new PartOperation
@@ -870,6 +895,7 @@ public sealed partial class PartDesignService(
             Kind = kind,
             Summary = Truncate(summary, 200),
             ChangesJson = JsonSerializer.Serialize(changes, Json),
+            RelationChangesJson = JsonSerializer.Serialize(relationChanges ?? [], Json),
             CreatedAt = now,
         };
         project.Operations.Add(next);
@@ -887,6 +913,7 @@ public sealed partial class PartDesignService(
         await db.PartDesigns
             .Include(p => p.Parts)
             .Include(p => p.Operations)
+            .Include(p => p.Relations)
             .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.Id == id && p.OwnerKeyHash == owner.OwnerKeyHash, cancellationToken)
         ?? throw new ApiException(StatusCodes.Status404NotFound, "not_found", "Part design project not found.");
@@ -981,6 +1008,7 @@ public sealed partial class PartDesignService(
             Utc(project.UpdatedAt),
             JsonSerializer.Deserialize<List<IssueDto>>(project.IssuesJson, Json) ?? [],
             parts,
+            RelationDtos(project),
             history,
             project.Operations.Any(o => !o.IsUndone),
             project.Operations.Any(o => o.IsUndone));

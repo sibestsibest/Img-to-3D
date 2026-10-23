@@ -1,12 +1,16 @@
 import type { ExtraPhoto, Job, PagedResult, ProblemDetails, ScaleAxis } from '../types/api'
 import type {
   AddPrimitiveRequest,
+  AssemblyReport,
+  CreateRelationRequest,
   DesignRelease,
   DrawingFormat,
   DrawingReport,
   ExportManifest,
   PartDesignProject,
   PartDesignSummary,
+  RelationRequest,
+  ReleaseDiff,
   SplitPlane,
   SplitPreview,
   UpdatePartRequest,
@@ -152,6 +156,13 @@ export const designApi = {
   exportManifest: (id: string, signal?: AbortSignal) => request<ExportManifest>(designPath(id, '/export/manifest'), { signal }),
   releases: (id: string, signal?: AbortSignal) => request<DesignRelease[]>(designPath(id, '/releases'), { signal }),
   createRelease: (id: string, note?: string) => request<DesignRelease>(designPath(id, '/releases'), json('POST', { note })),
+  addRelation: (id: string, body: CreateRelationRequest) => request<PartDesignProject>(designPath(id, '/relations'), json('POST', body)),
+  updateRelation: (id: string, relationId: string, body: RelationRequest) =>
+    request<PartDesignProject>(designPath(id, `/relations/${encodeURIComponent(relationId)}`), json('PUT', body)),
+  removeRelation: (id: string, relationId: string) => request<PartDesignProject>(designPath(id, `/relations/${encodeURIComponent(relationId)}`), { method: 'DELETE' }),
+  /** Relation fits, collisions between all active parts and geometry quality, computed now. */
+  assembly: (id: string, signal?: AbortSignal) => request<AssemblyReport>(designPath(id, '/assembly'), { signal }),
+  compareReleases: (id: string, from: number, to: number) => request<ReleaseDiff>(designPath(id, `/releases/compare?from=${from}&to=${to}`)),
   undo: (id: string) => request<PartDesignProject>(designPath(id, '/undo'), { method: 'POST' }),
   redo: (id: string) => request<PartDesignProject>(designPath(id, '/redo'), { method: 'POST' }),
 }

@@ -181,7 +181,7 @@ public class PartExportTests
         Assert.Equal("mm", manifest.Units);
         Assert.Equal(1, manifest.SchemaVersion);
         var kinds = manifest.Files.Select(f => f.Kind).Order().ToList();
-        Assert.Equal(["bom", "cut-list", "drawing-dxf", "drawing-pdf", "drawing-svg", "readme", "stl"], kinds);
+        Assert.Equal(["assembly", "bom", "cut-list", "drawing-dxf", "drawing-pdf", "drawing-svg", "quality", "readme", "stl"], kinds);
         Assert.Equal(files.Keys.Where(k => k != "manifest.json").Order(), manifest.Files.Select(f => f.Path).Order());
         foreach (var file in manifest.Files)
         {
