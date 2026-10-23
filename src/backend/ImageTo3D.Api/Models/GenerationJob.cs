@@ -46,6 +46,9 @@ public sealed class GenerationJob
 
     public Guid? InferenceJobId { get; set; }
 
+    /// <summary>Engine reported by the inference service when the job was submitted (TripoSR, StableFast3D, SPAR3D); null for older jobs.</summary>
+    public string? Engine { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? StartedAt { get; set; }

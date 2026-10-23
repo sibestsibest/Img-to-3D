@@ -230,6 +230,10 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Engine")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ErrorCode")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
@@ -517,6 +521,20 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.Property<string>("OwnerKeyHash")
                         .IsRequired()
                         .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParametricEngineVersion")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParametricFilesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParametricParametersJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParametricTemplate")
+                        .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("SourceAttribution")

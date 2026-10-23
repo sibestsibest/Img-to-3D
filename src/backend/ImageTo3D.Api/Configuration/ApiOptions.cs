@@ -255,6 +255,46 @@ public sealed class ModelSearchOptions
     public int MaxTriangles { get; set; } = 2_000_000;
 }
 
+/// <summary>
+/// The parametric geometry worker (src/parametric-geometry, Python). It runs as a short-lived child
+/// process per request; when its virtual environment is missing, parametric generation reports
+/// "missing" and everything else keeps working. Relative paths resolve against the API content root.
+/// </summary>
+public sealed class ParametricOptions
+{
+    public const string SectionName = "Parametric";
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Folder holding the worker's <c>parametric</c> package (the process's working directory).</summary>
+    [Required]
+    public string WorkerDirectory { get; set; } = "../../parametric-geometry";
+
+    /// <summary>Python interpreter; empty = the worker's own .venv (Scripts\python.exe on Windows, bin/python elsewhere).</summary>
+    public string? PythonPath { get; set; }
+
+    /// <summary>Temporary output folders, one per run, deleted when the run is finished.</summary>
+    [Required]
+    public string WorkRoot { get; set; } = "../../../data/parametric-work";
+
+    /// <summary>One generation; the worker process is killed when it is exceeded.</summary>
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(2);
+
+    public TimeSpan DescribeTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Generations running at the same time; further requests wait (up to <see cref="Timeout"/>).</summary>
+    [Range(1, 16)]
+    public int MaxConcurrentRuns { get; set; } = 2;
+
+    /// <summary>Same limit as the worker's own (requests above it are refused before starting a process).</summary>
+    [Range(1024, 10_000_000)]
+    public int MaxRequestBytes { get; set; } = 1_000_000;
+
+    /// <summary>Worker stderr kept for the log per run.</summary>
+    [Range(1024, 10_000_000)]
+    public int MaxLogBytes { get; set; } = 64 * 1024;
+}
+
 public sealed class ModelOutputOptions
 {
     public const string SectionName = "ModelOutput";

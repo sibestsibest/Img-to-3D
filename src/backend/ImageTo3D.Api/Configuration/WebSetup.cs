@@ -79,6 +79,8 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails, I
         httpContext.Response.StatusCode = status;
         var problem = new ProblemDetails { Status = status, Title = title, Detail = detail };
         problem.Extensions["code"] = code;
+        if (exception is ApiException { Field: { } field })
+            problem.Extensions["field"] = field;
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext { HttpContext = httpContext, ProblemDetails = problem, Exception = exception });
     }
 

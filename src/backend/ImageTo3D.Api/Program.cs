@@ -3,7 +3,9 @@ using ImageTo3D.Api.Configuration;
 using ImageTo3D.Api.Data;
 using ImageTo3D.Api.Services;
 using ImageTo3D.Api.Services.Inference;
+using ImageTo3D.Api.Services.Parametric;
 using ImageTo3D.Api.Services.PartDesign;
+using ImageTo3D.Api.Services.Processes;
 using ImageTo3D.Api.Services.Embeddings;
 using ImageTo3D.Api.Services.References;
 using ImageTo3D.Api.Services.Storage;
@@ -23,6 +25,7 @@ builder.Services.AddOptions<PartDesignOptions>().Bind(builder.Configuration.GetS
 builder.Services.AddOptions<EmbeddingOptions>().Bind(builder.Configuration.GetSection(EmbeddingOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<ModelSearchOptions>().Bind(builder.Configuration.GetSection(ModelSearchOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<ReferenceSearchOptions>().Bind(builder.Configuration.GetSection(ReferenceSearchOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<ParametricOptions>().Bind(builder.Configuration.GetSection(ParametricOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 
 builder.Services.AddDbContext<AppDbContext>((sp, options) =>
 {
@@ -40,6 +43,8 @@ builder.Services.AddSingleton<ArtifactProcessor>();
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddScoped<JobService>();
 builder.Services.AddSingleton<IDesignArtifactStore, LocalDesignArtifactStore>();
+builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
+builder.Services.AddSingleton<IParametricWorker, ParametricWorker>();
 builder.Services.AddScoped<PartDesignService>();
 builder.Services.AddSingleton<IReferenceArtifactStore, LocalReferenceArtifactStore>();
 builder.Services.AddSingleton<ReferenceDownloadCache>();

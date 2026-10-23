@@ -13,11 +13,14 @@ using Microsoft.Extensions.Options;
 namespace ImageTo3D.Api.Services;
 
 /// <summary>Domain error surfaced to clients as RFC 7807 problem details.</summary>
-public sealed class ApiException(int status, string code, string message) : Exception(message)
+/// <param name="field">Request field the error is about, when known (returned as the "field" extension).</param>
+public sealed class ApiException(int status, string code, string message, string? field = null) : Exception(message)
 {
     public int Status { get; } = status;
 
     public string Code { get; } = code;
+
+    public string? Field { get; } = field;
 
     public static ApiException NotFound() => new(StatusCodes.Status404NotFound, "not_found", "Model job not found.");
 }

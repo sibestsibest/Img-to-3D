@@ -176,6 +176,15 @@ describe('hash routes', () => {
     expect(parseRoute('#/designs/not-a-guid')).toEqual({ view: 'designs' })
     expect(routeHash({ view: 'design', id })).toBe(`#/designs/${id}`)
   })
+
+  it('opens the parametric page, optionally as a variant of a project', () => {
+    const id = '6f9619ff-8b86-d011-b42d-00c04fc964ff'
+    expect(parseRoute('#/parametric')).toEqual({ view: 'parametric', from: null })
+    expect(parseRoute(`#/parametric/${id}`)).toEqual({ view: 'parametric', from: id })
+    expect(parseRoute('#/parametric/../etc')).toEqual({ view: 'parametric', from: null })
+    expect(routeHash({ view: 'parametric', from: id })).toBe(`#/parametric/${id}`)
+    expect(routeHash({ view: 'parametric', from: null })).toBe('#/parametric')
+  })
 })
 
 describe('drawing urls', () => {

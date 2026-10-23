@@ -1,5 +1,6 @@
 // Mirrors ImageTo3D.Api part-design DTOs (src/backend/ImageTo3D.Api/DTOs/PartDesignDtos.cs).
 // All lengths are millimetres; coordinates are the viewer's (Y-up, centred on X/Z, resting on Y = 0).
+import type { GeometryOrigin } from './api'
 
 export type PartCategory = 'sheet' | 'rod' | 'tube' | 'stock_part' | 'custom_3d' | 'needs_review'
 
@@ -78,7 +79,8 @@ export interface DesignPart {
     thicknessMm: number
     outerDiameterMm: number | null
     innerDiameterMm: number | null
-    status: 'estimated'
+    /** 'exact' for parts generated from parameters. */
+    status: 'estimated' | 'exact'
   }
   confirmed: { lengthMm: number | null; widthMm: number | null; heightMm: number | null; status: 'user_confirmed' | null }
   spec: ManufacturingSpec
@@ -95,7 +97,7 @@ export interface Operation {
   createdAt: string
 }
 
-export type DesignSourceKind = 'generation_job' | 'reference_model' | 'none'
+export type DesignSourceKind = 'generation_job' | 'reference_model' | 'none' | 'parametric'
 
 /** Where a project's source came from; a reused model keeps its licence and attribution. */
 export interface DesignSource {
@@ -115,7 +117,7 @@ export interface PartDesignProject {
   sourceFileName: string
   source: DesignSource
   mmPerModelUnit: number
-  scaleStatus: 'estimated'
+  scaleStatus: 'estimated' | 'exact'
   coordinateSystem: string
   fitAllowanceMinMm: number
   fitAllowanceMaxMm: number
@@ -128,6 +130,9 @@ export interface PartDesignProject {
   canUndo: boolean
   canRedo: boolean
   units: 'mm'
+  origin: GeometryOrigin
+  /** Only for projects generated from template parameters. */
+  parametric: ParametricInfo | null
 }
 
 export interface PartDesignSummary {
@@ -139,6 +144,7 @@ export interface PartDesignSummary {
   partCount: number
   createdAt: string
   updatedAt: string
+  origin: GeometryOrigin
 }
 
 /** Body of PUT /api/part-designs/{id}/parts/{partId}: a full replacement of the editable fields. */
@@ -421,4 +427,56 @@ export interface ReleaseDiff {
   warningsBefore: number
   warningsAfter: number
   notes: string[]
+}
+
+export type ParametricFileKind = 'templates-pdf' | 'views-pdf' | 'views-svg' | 'bom' | 'stl' | 'obj' | 'package'
+
+export interface ParametricFile {
+  kind: ParametricFileKind
+  description: string
+  url: string
+}
+
+/** How a parametric project was generated; its files reflect these parameters, not later edits. */
+export interface ParametricInfo {
+  template: string
+  engineVersion: string
+  parameters: Record<string, unknown>
+  files: ParametricFile[]
+}
+
+/** One template parameter as the geometry worker describes it. */
+export interface ParametricParameter {
+  name: string
+  type: 'number' | 'integer'
+  default: number
+  minimum: number
+  maximum: number
+  unit: string
+  description: string
+  /** Only these values are accepted (PS sheet thicknesses). */
+  allowed?: number[]
+}
+
+export interface ParametricTemplate {
+  name: string
+  description: string
+  parameters: ParametricParameter[]
+  /** assembly only: the shapes a component can have, with their size fields. */
+  shapes?: Record<string, { fields: string[]; description: string }>
+}
+
+/** GET /api/part-designs/parametric/templates */
+export interface ParametricCatalog {
+  schemaVersion: number
+  engine: { name: string; version: string }
+  units: 'mm'
+  sheetThicknessesMm: number[]
+  templates: ParametricTemplate[]
+}
+
+export interface CreateParametricRequest {
+  template: string
+  parameters: Record<string, unknown>
+  name?: string
 }

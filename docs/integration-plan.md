@@ -119,7 +119,35 @@ Acceptance: reproducible geometry ✓; tests verify known dimensions ✓; meanin
 exported GLB/STL/OBJ/DXF/PDF load in independent readers ✓; works without AI weights or Meshroom ✓
 (needs Python 3.11 and the pinned packages).
 
-### Phase 2: Shared backend and frontend integration
+### Phase 2: Shared backend and frontend integration (done 2026-10-23)
+
+The owner chose option A: a parametric model is a part-design project, created synchronously, and
+a variant with other parameters is a new project. The owner also chose that `setup.ps1` creates the
+worker venv when `uv` is present.
+
+As built:
+
+* **Endpoints:** `GET /api/capabilities`, `GET /api/part-designs/parametric/templates`,
+  `POST /api/part-designs/parametric`, `GET /api/part-designs/{id}/parametric/files/{kind}`.
+* **Process handling:** a generic `IProcessRunner`/`ProcessRunner` (also meant for Phase 3) and
+  `ParametricWorker` (see the worker integration below).
+* **Migration** `AddParametricDesigns`, additive:
+  * `PartDesignProjects`: `ParametricTemplate`, `ParametricParametersJson`,
+    `ParametricEngineVersion`, `ParametricFilesJson`
+  * `GenerationJobs`: `Engine`
+* **DTO fields** (all additive): `origin` on projects, project summaries and jobs; `engine` on jobs;
+  `parametric` on projects; `scaleStatus` `exact` for parametric projects; an optional `field`
+  problem-details extension.
+* **Frontend:**
+  * new page `#/parametric` (form generated from the template schema; `#/parametric/<id>` makes a
+    variant);
+  * `ParametricPanel` in the part designer;
+  * `OriginBadge` on jobs, project list and project.
+* **Scripts:** `setup.ps1` creates the worker venv (when `uv` is present); `test.ps1` runs pytest.
+* **Tests:** Api 240 (was 211), frontend 94 (was 84), pytest 117, Core 201 and Inference 23
+  unchanged; all pass.
+
+The plan below is kept as written before implementation.
 
 Endpoint mapping (suggested → this project):
 

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
+import { OriginBadge } from '../components/OriginBadge'
+import { ParametricPanel } from '../components/partdesign/ParametricPanel'
 import { AssemblyPanel } from '../components/partdesign/AssemblyPanel'
 import { ExportPanel } from '../components/partdesign/ExportPanel'
 import { IssueList, PartPropertiesPanel } from '../components/partdesign/PartPropertiesPanel'
@@ -78,15 +80,19 @@ export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void 
             </button>
           </div>
           <p className="muted small">
+            <OriginBadge origin={project.origin} />{' '}
             {project.source.kind === 'none' ? (
               'No source model: built from stock shapes.'
+            ) : project.source.kind === 'parametric' ? (
+              'Generated from parameters.'
             ) : (
               <>
                 From <strong>{project.sourceFileName}</strong>
                 {project.source.kind === 'reference_model' && ' (reused existing model)'}.
               </>
             )}{' '}
-            Units: mm. Scale: <span className="tag tag--needs_review">estimated</span>
+            Units: mm. Scale:{' '}
+            {project.scaleStatus === 'exact' ? <span className="tag tag--origin-parametric">exact</span> : <span className="tag tag--needs_review">estimated</span>}
           </p>
           {project.source.attribution && <p className="muted small">Source: {project.source.attribution}</p>}
           <IssueList issues={project.issues} empty="" />
@@ -99,6 +105,8 @@ export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void 
             </button>
           </div>
         </section>
+
+        {project.parametric && <ParametricPanel projectId={project.id} info={project.parametric} />}
 
         <PartTree
           nodes={tree}
@@ -163,11 +171,18 @@ export function PartDesignPage({ id, onBack }: { id: string; onBack: () => void 
           </div>
         )}
         <AssemblyPanel projectId={project.id} parts={active} version={project.updatedAt} onSelectPart={selectPart} />
-        <footer className="disclaimer">
-          <strong>Estimates, not measurements.</strong> Categories are suggestions from simple shape rules, and dimensions measured on a
-          model (AI-generated or reused) are at an assumed scale; only stock shapes have the sizes you entered. Confirm measurements on the
-          real part before cutting styrene.
-        </footer>
+        {project.source.kind === 'parametric' ? (
+          <footer className="disclaimer">
+            <strong>Exact to the parameters, not to a real object.</strong> Every part was generated from the sizes you entered, so the drawings
+            match them exactly. Rolled parts are cut from developed templates and formed by hand; allow for joints when cutting.
+          </footer>
+        ) : (
+          <footer className="disclaimer">
+            <strong>Estimates, not measurements.</strong> Categories are suggestions from simple shape rules, and dimensions measured on a
+            model (AI-generated or reused) are at an assumed scale; only stock shapes have the sizes you entered. Confirm measurements on the
+            real part before cutting styrene.
+          </footer>
+        )}
       </main>
     </div>
   )

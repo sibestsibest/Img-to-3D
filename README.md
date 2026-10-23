@@ -12,6 +12,11 @@ Around the generator the app follows *retrieval first, reuse second, reconstruct
   Archive) for pictures of the object, rank them with an optional local CLIP model, look for
   existing 3D models (Sketchfab listings, your own GLB/STL), then **Get the geometry**: reuse an
   accepted model, generate (with or without extra photos) or build by hand.
+* **Parametric** (`#/parametric`): generate a model from exact sizes, with no AI and no photos. The
+  spacecraft template is built from PS sheet, and the compound template from boxes, cylinders,
+  cones, spheres, tubes, plates and shells. The result opens in the part designer with 1:1
+  cutting templates, orthographic views and a BOM. It needs the Python worker in
+  `src/parametric-geometry`, which `scripts/setup.ps1` installs when `uv` is present.
 * **Part design** (`#/designs`): break a model into editable parts (sheet, rod, tube, stock,
   custom), split them with real capped plane cuts, add stock shapes with exact sizes, relate parts
   (glued, peg in hole, tube over rod, nested, slot) with fit and collision checks, and export 1:1
@@ -114,7 +119,7 @@ docs/api.md                              docker-compose.yml, Dockerfiles
 | RAM | 16 GB | inference process peak working set measured at 5.75 GB (fp32 encoder ≈ 3.3 GB + activations) |
 | Disk | 5 GB | 3.5 GB of models, plus ~155 MB for the optional CLIP model |
 | GPU | optional | CPU works; see [GPU](#gpu-cuda) |
-| Python | **not used** by the default TripoSR setup | only the optional SF3D/SPAR3D engine (`src/inference-sf3d`) needs it |
+| Python | **not used** by the default TripoSR setup | the parametric geometry worker (`src/parametric-geometry`, Python 3.11 via `uv`, set up by `setup.ps1`) and the optional SF3D/SPAR3D engine (`src/inference-sf3d`) need it. Without it, only those features are unavailable |
 
 Measured on the development machine (16 vCPU QEMU VM, 32 GB RAM, no GPU, CPU execution provider):
 model load ≈ 7 s; per image ≈ 30–35 s (encoder ≈ 8–10 s, 256³ density grid ≈ 21 s, background
@@ -200,8 +205,9 @@ and a correctly scaled model is still not dimensionally identical to the origina
 |---|---|---|
 | `tests/shared` | 201 | assembly collisions (triangle pairs crossing, touching, coplanar, parallel within tolerance, shallow penetration; BVH pair search against brute force; rod through plate with intersection length, plate on block touching, separated, block inside block both ways, rod in a tube bore, oversize rod, open meshes, test budget, point-in-solid ray parity), fit checks (tube over rod, peg in hole too tight/too loose, tube bore as hole, slot, unknown opening, estimates marked, category mismatch, glued/non-round nested, unknown kind), reconstruction planner (preference order, reuse blocks generation, listing-only models, closed-mesh preference, licence/unit warnings, multi-view always unsupported, hybrid engine and same-object requirements, cap on extra photos, unreachable engine, manual fallback), stock shapes (plate/block/rod/tube closed and outward, exact sizes, axes, polygon volumes, tube bore, usable plate outline, input validation), CLIP tokenizer (BPE merges, reference token IDs, truncation), CLIP preprocessing (normalisation, alpha, centre crop), bicubic resampling, cosine/softmax/clustering, perceptual hash (resize/JPEG tolerance, distinct pictures, transparency) and thumbnails, DXF R12 export (header, mm units, CUT layer closed contours at 1:1, annotation layer, text encoding), drawing revision label, cutting outlines (rotated plate, rectangular and round holes, L shape, simplification tolerance, tapered edges, non-flat and open parts), 1:1 drawings (A4/A3 page choice, SVG mm scale and layers, escaping, PDF page size, millimetre scale and no embedded fonts, too-large parts, drawing checks),  plane splitting with capped cuts (cube, oblique, plate with hole both ways, cylinder, tube, cut through a vertex ring, disconnected boxes, open mesh, marching-cubes torus in three directions), polygon-with-holes triangulation, welding, connected components, boundary/non-manifold detection, oriented bounds, part classification (sheet, rod, tube, custom, needs review), GLB node reading, marching cubes watertightness/orientation/volume, GLB round-trip + independent SharpGLTF validation, STL binary format, normals, degenerate faces, GLB→STL conversion, scaling maths, image signature/decoding/limits, resampler |
 | `tests/inference` | 23 | preprocessing ports, job state machine, internal API validation, artifact whitelist, API key, **real TripoSR smoke test** (chair → valid coloured mesh, Y-up proportions, density threshold sanity) and mid-inference cancellation |
-| `tests/backend` | 211 | assembly through the API (relations with fit checks against the project limits, edit/undo/redo/remove, self/duplicate/inactive refusals, part deletion removes relations and undo restores them, discarded redo branch, collisions with intentional-overlap exceptions, glued contact and gaps, containment and nesting, unmoved duplicates, quality report of a generated model, package metadata and release comparison, owner isolation), reconstruction decision through the API (route list, reuse of an accepted GLB/STL without inference and with provenance, generation refused while a model is accepted, hybrid extra photos sent to the engine, engine without extra photos, single-image failure and retry, deleted running job, manual geometry, owner isolation, non-reusable models), stock shapes (empty projects, exact specs, drawing and cut list, undo/redo, invalid input, isolation), extra photos stored and sent with their views, migration of existing projects to source kinds, real CLIP model (caption matching on chair/robot, resize/JPEG stability, zero-shot, missing files, disabled), ranking (signals, re-normalisation without embeddings, duplicates, input photo, groups, new viewpoint, accepted evidence, capped relation), model evaluation (listing only, downloadability, licence, face count, geometry, scale), ranking through the API with a fake embedder (fallback, failure isolation, embedding cache), Sketchfab search (licence mapping, age-restricted skipped, preview host rules, cache, failures, timeout, disabled), GLB/STL upload checks (closed/open, unitless STL, ASCII STL/OBJ/broken/oversized refused, duplicates, file download, review, removal, isolation), reference search against a fake web (attribution and licence normalisation, previews and their size/host/redirect limits, cache and clearing, per-source failures with bounded retries, timeouts, rate limiting, empty and malformed answers, disabled sources, exact/near duplicates and input match, review decisions, manual pictures, sessions from jobs, owner isolation, no credentials sent, cancellation), exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
-| `src/frontend` | 84 | relation form parsing, fit summaries, collision order, exploded-view offsets, reconstruction states and route actions, stock-shape form parsing, job route, ranking order, visual/viewpoint grouping, suggestion and confidence labels, model API calls, reference filters, licence tones, source outcomes, reference API calls and routes, drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
+| `tests/backend` | 240 | parametric projects through the API (one part per component with exact specs, generated files kept and downloadable, refusals with code and field, missing worker as 503 and in capabilities, isolation, designer tools on parametric parts, job engine and origin), the worker process contract with a scripted runner (arguments, stdin request, refusals, crash, timeout, garbage, oversized request) and, when the worker venv exists, the real process runner (stdin, capped stderr, timeout kill, cancellation) and a real spacecraft generation, additive parametric migration, assembly through the API (relations with fit checks against the project limits, edit/undo/redo/remove, self/duplicate/inactive refusals, part deletion removes relations and undo restores them, discarded redo branch, collisions with intentional-overlap exceptions, glued contact and gaps, containment and nesting, unmoved duplicates, quality report of a generated model, package metadata and release comparison, owner isolation), reconstruction decision through the API (route list, reuse of an accepted GLB/STL without inference and with provenance, generation refused while a model is accepted, hybrid extra photos sent to the engine, engine without extra photos, single-image failure and retry, deleted running job, manual geometry, owner isolation, non-reusable models), stock shapes (empty projects, exact specs, drawing and cut list, undo/redo, invalid input, isolation), extra photos stored and sent with their views, migration of existing projects to source kinds, real CLIP model (caption matching on chair/robot, resize/JPEG stability, zero-shot, missing files, disabled), ranking (signals, re-normalisation without embeddings, duplicates, input photo, groups, new viewpoint, accepted evidence, capped relation), model evaluation (listing only, downloadability, licence, face count, geometry, scale), ranking through the API with a fake embedder (fallback, failure isolation, embedding cache), Sketchfab search (licence mapping, age-restricted skipped, preview host rules, cache, failures, timeout, disabled), GLB/STL upload checks (closed/open, unitless STL, ASCII STL/OBJ/broken/oversized refused, duplicates, file download, review, removal, isolation), reference search against a fake web (attribution and licence normalisation, previews and their size/host/redirect limits, cache and clearing, per-source failures with bounded retries, timeouts, rate limiting, empty and malformed answers, disabled sources, exact/near duplicates and input match, review decisions, manual pictures, sessions from jobs, owner isolation, no credentials sent, cancellation), exports (DXF and part STL endpoints, BOM with formula neutralisation, rod cut list grouping and estimate marking, draft package files and SHA-256 manifest, warnings, numbered immutable releases, export blocked by errors, owner isolation, release deletion with the project), drawing report/SVG/PDF endpoints (sheet suggestion, mm scale, headers, specified thickness, escaping, refusals, isolation),  migration baseline of a pre-migration database (and refusal of one with missing columns, WAL on new databases), part design: creation and source copy, survival of job deletion and retention, owner isolation, part editing and validation, undo/redo and redo-branch cleanup, split preview/apply/undo with real cut geometry, open-mesh refusal, upload validation, job transitions, inference failure/unavailable/timeout/lost, downloads (real GLB/STL, units, orientation), scale endpoint + DTO validation, ownership isolation, idempotency, active-job limit, delete, cleanup, health without secrets, correlation IDs, path-traversal protection, HTTP client error mapping |
+| `src/frontend` | 94 | parametric form (defaults, variants, ranges, sheet thicknesses, component JSON, server field mapping), geometry origin labels, parametric route, relation form parsing, fit summaries, collision order, exploded-view offsets, reconstruction states and route actions, stock-shape form parsing, job route, ranking order, visual/viewpoint grouping, suggestion and confidence labels, model API calls, reference filters, licence tones, source outcomes, reference API calls and routes, drawing URLs, part tree, selection/visibility/isolation state, cutting plane, part form parsing, hash routes, scale maths and validation, API client error mapping, idempotency header, upload validation, stage/progress text |
+| `src/parametric-geometry` | 117 | pytest: primitives and their exact sizes and volumes, PS thickness whitelist, parameter validation, spacecraft dimensions and conflicts, sheet volume = template area x thickness, BOM grouping, determinism, GLB/STL/OBJ/SVG/PDF/DXF read back, CLI exit codes and refusals |
 
 Backend tests replace the inference HTTP client with an in-memory fake, so they need no model, and
 the reference-search HTTP handler with a fake web and CLIP with a deterministic fake, so they never
@@ -357,6 +363,40 @@ search follows its state (`completed`, `failed` with the reason, `cancelled`) an
 be started again. Limitations: a reused STL is assumed to be millimetres; reused models are split
 into parts like generated ones (node, then connected piece) and their textures are not carried over;
 suggested viewpoints are not passed to the engine (it detects the side itself).
+
+## Parametric models
+
+**Parametric** (`#/parametric`), or **New parametric model** on the part-design list, generates a
+model from exact sizes. Pick a template, enter the sizes and the PS sheet thickness (0.3, 0.5, 0.8,
+1, 1.5, 2 or 3 mm), then click **Generate**. The model is built in a few seconds and opens in the
+part designer as a project marked **Parametric**, with scale *exact*. Each component becomes one
+part, with its category, sheet thickness and material already filled in. The **Parametric model**
+card has the generated files: 1:1 cutting templates (PDF, plus a zip with SVG and DXF per part),
+front, side and top views with a section, a BOM with identical parts grouped, and STL and OBJ.
+These files show the model as it was generated; edits made in the designer afterwards are not in
+them. **Create a variant** opens the form with the same parameters.
+
+Templates:
+
+* **Spacecraft**: a rectangular upper hull built from sheets, a semicircular lower hull rolled
+  from sheet with bulkheads and ribs, an engine housing with a mount and a flared exhaust, armor
+  panels on both sides, a top frame with recesses, a vent, hex bolt heads and antennas. Rolled
+  parts get developed (flat) templates and a *requires forming* note.
+* **Assembly**: a list of boxes, chamfered boxes, cylinders, cones, frustums, spheres,
+  hemispheres, tubes, rods, extrusions, PS plates and rolled shells, each placed with translate,
+  rotate and scale.
+
+The geometry comes from a Python worker (`src/parametric-geometry`, see its
+[README](src/parametric-geometry/README.md)), which the API starts as a short-lived process for
+each request. The request goes over stdin and the files go to a temporary folder that is deleted
+afterwards. There is no port and no shell, and the process is killed after `Parametric:Timeout`.
+`GET /api/capabilities` reports whether it is ready. When the worker's venv is missing,
+parametric generation answers 503 and says how to set it up; everything else keeps working.
+Settings: `Parametric:Enabled`, `WorkerDirectory`, `PythonPath` (default: the worker's `.venv`),
+`WorkRoot`, `Timeout` (2 min), `MaxConcurrentRuns` (2).
+
+Every model also shows where its geometry comes from: **AI-predicted** (a generation job, with its
+engine), **Parametric**, **Existing model** (a reused file) or **Built by hand**.
 
 ## Part design
 
@@ -566,7 +606,18 @@ Verified on the development machine (Windows 10, CPU only):
   clearance, OK), and a release (8 files, 3.2 MB) plus a second one compared as one changed part.
   The development database was then backed up and migrated (7 jobs, 2 searches kept).
 
+* Parametric models through the real API and the real Python worker, on a copy of the development
+  database (2026-10-23). The `AddParametricDesigns` migration kept all 8 jobs. A 260 mm spacecraft
+  with 1.5 mm sheet was created in 4.3 s, and the templates PDF downloaded. A height of 30 mm was
+  refused with `422 geometry_conflict`, field `parameters.height`. The temporary work folder was
+  empty afterwards, and `/api/capabilities` reported parametric `ready`. The `#/parametric` form
+  was checked in a browser (headless Edge).
+
 Not verified:
+
+* A parametric project opened in the part designer in a browser, which includes the Parametric
+  card and the badges. It is covered by type checking, unit tests and the API tests.
+* Parametric generation in Docker: the images have no Python, so it reports `missing` there.
 
 * The Phase 7 screens (relations, assembly check, exploded view, release comparison) in a
   browser; they are covered by type checking, unit tests and the API tests only.

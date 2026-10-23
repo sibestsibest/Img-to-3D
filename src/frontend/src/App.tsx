@@ -1,6 +1,7 @@
 import { useHashRoute } from './hooks/useHashRoute'
 import { engineLabel, useEngineInfo } from './hooks/useEngineInfo'
 import { PartDesignListPage } from './pages/PartDesignListPage'
+import { ParametricPage } from './pages/ParametricPage'
 import { PartDesignPage } from './pages/PartDesignPage'
 import { ReferenceListPage } from './pages/ReferenceListPage'
 import { ReferenceSessionPage } from './pages/ReferenceSessionPage'
@@ -28,6 +29,9 @@ export default function App() {
           <a href="#/references" aria-current={route.view === 'references' || route.view === 'reference' ? 'page' : undefined}>
             References
           </a>
+          <a href="#/parametric" aria-current={route.view === 'parametric' ? 'page' : undefined}>
+            Parametric
+          </a>
           <a href="#/designs" aria-current={route.view === 'designs' || route.view === 'design' ? 'page' : undefined}>
             Part design
           </a>
@@ -46,6 +50,9 @@ export default function App() {
       )}
       {route.view === 'designs' && <PartDesignListPage onOpen={(id) => navigate({ view: 'design', id })} onBack={() => navigate({ view: 'workspace' })} />}
       {route.view === 'design' && <PartDesignPage key={route.id} id={route.id} onBack={() => navigate({ view: 'designs' })} />}
+      {route.view === 'parametric' && (
+        <ParametricPage key={route.from ?? 'new'} from={route.from} onCreated={(id) => navigate({ view: 'design', id })} onBack={() => navigate({ view: 'designs' })} />
+      )}
       {route.view === 'references' && <ReferenceListPage onOpen={(id) => navigate({ view: 'reference', id })} onBack={() => navigate({ view: 'workspace' })} />}
       {route.view === 'reference' && (
         <ReferenceSessionPage

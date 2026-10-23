@@ -57,7 +57,9 @@ confidently is skipped (see the inference service log); the job still succeeds.
   "mesh": { "vertices": 81862, "triangles": 163712 },          // after success
   "dimensionsMm": { "x": 91.72, "y": 100.0, "z": 80.29 },     // bounding box, Y = up
   "scale": { "axis": "Longest", "targetMm": 100, "mmPerModelUnit": 101.05 },
-  "downloads": { "glb": true, "stl": true, "stlError": null }
+  "downloads": { "glb": true, "stl": true, "stlError": null },
+  "engine": "TripoSR",               // engine that predicted the mesh (null for jobs before this field)
+  "origin": "ai_predicted"           // geometry origin, always ai_predicted for jobs
 }
 ```
 
@@ -117,6 +119,22 @@ Cancels running work and deletes the database row and every file of the job.
 `status` is `degraded` when the inference service is unreachable or still loading; HTTP 503 only
 when the database is unavailable. No configuration, paths or secrets are exposed.
 
+### `GET /api/capabilities`
+
+Which geometry engines can be used now, for the UI to offer only working workflows:
+
+```json
+{ "engines": [
+  { "id": "parametric", "kind": "parametric", "origin": "parametric", "status": "ready", "version": "0.1.0", "reason": null },
+  { "id": "TripoSR", "kind": "single_image_ai", "origin": "ai_predicted", "status": "ready", "version": null, "reason": null },
+  { "id": "meshroom", "kind": "photogrammetry", "origin": "photogrammetry", "status": "unavailable", "version": null,
+    "reason": "Multi-photo reconstruction (Meshroom) is not integrated yet." } ] }
+```
+
+`status`: `ready`, `missing` (not set up, e.g. no worker venv), `disabled`, `failed` or
+`unavailable`; `reason` says what to do. Errors carry an optional `field` extension (e.g.
+`"parameters.height"`) when they are about one request field.
+
 ## Part design (`/api/part-designs`)
 
 A project breaks a model into derived, individually editable parts. The source is a succeeded
@@ -130,9 +148,11 @@ scale when the project was created (a reused GLB uses its declared metres, a reu
 to be millimetres and converted from Z-up). Every mutating call returns the full project.
 
 Project: `{ id, name, sourceJobId (null unless made from a job), sourceFileName, source { kind:
-generation_job|reference_model|none, jobId, referenceSessionId, modelCandidateId, fileName,
+generation_job|reference_model|none|parametric, jobId, referenceSessionId, modelCandidateId, fileName,
 license, attribution }, mmPerModelUnit, scaleStatus, coordinateSystem, fitAllowanceMinMm,
-fitAllowanceMaxMm, createdAt, updatedAt, issues[], parts[], relations[], history[], canUndo, canRedo, units }`.
+fitAllowanceMaxMm, createdAt, updatedAt, issues[], parts[], relations[], history[], canUndo, canRedo, units,
+origin: ai_predicted|parametric|uploaded|manual, parametric (null unless generated from parameters) }`.
+`scaleStatus` is `exact` for parametric projects, otherwise `estimated`.
 
 Relation: `{ id, partAId, partBId, kind, allowOverlap, openingSizeMm, note, fit { status:
 ok|too_tight|too_loose|unknown|not_applicable, openingMm, insertedMm, clearanceMm, basis:
@@ -147,6 +167,9 @@ used before the model's estimates (`basis: estimated`).
 |---|---|---|
 | POST | `/api/part-designs` | JSON `{ sourceJobId, name? }`. Splits the mesh into nodes and connected pieces (small pieces grouped as fragments) and suggests a category per part. `201`; `404 source_not_found`, `409 not_ready`, `410 artifact_missing`, `422 source_too_large` / `no_usable_geometry` |
 | POST | `/api/part-designs/blank` | JSON `{ name? }`. Empty project without a source (`source.kind` `none`), for parts built from stock shapes. `201`; `409 too_many_projects` |
+| GET | `/api/part-designs/parametric/templates` | Templates of the parametric geometry worker: parameters with `default`, `minimum`, `maximum`, `unit`, `description` and `allowed` (PS sheet thicknesses 0.3, 0.5, 0.8, 1, 1.5, 2, 3 mm); the assembly template also lists its `shapes`. `503 geometry_engine_unavailable` when the worker is not set up |
+| POST | `/api/part-designs/parametric` | JSON `{ template, parameters?, name? }` (`template` `[a-z0-9_]{1,32}`; omitted parameters take their defaults). Runs the worker (a few seconds, rate limited like uploads) and creates a project with `source.kind` `parametric`, `origin` `parametric`, `scaleStatus` `exact`: one part per component (origin `parametric`, category, sheet thickness, material, rod/tube sizes from the generator, review `user_confirmed`; identical pieces in one component, e.g. 24 bolt heads, keep quantity 1 with a stock note). `parametric { template, engineVersion, parameters, files[] }` lists the generated files. `201`; `400 invalid_parameter` / `unsupported_thickness` / `unknown_template` / `invalid_request`, `413 request_too_large`, `422 geometry_conflict` / `limit_exceeded` (all with `field`), `503 geometry_engine_unavailable` / `geometry_engine_busy`, `504 geometry_engine_timeout`, `500 geometry_engine_failed` |
+| GET | `/api/part-designs/{id}/parametric/files/{kind}?download=true` | A generated file as made with the project (later edits are not in it): `templates-pdf` (1:1 cutting templates), `views-pdf`, `views-svg` (orthographic views and section), `bom` (CSV, identical parts grouped), `stl` (mm, Z-up), `obj` (mm, Y-up), `package` (zip of everything, per-part SVG/DXF templates included). `404` unknown or not generated, `409 not_parametric` |
 | POST | `/api/part-designs/{id}/parts/primitive` | JSON `{ kind: plate\|box\|rod\|tube, units: "mm", name?, material?, lengthMm, widthMm, heightMm, thicknessMm, diameterMm, outerDiameterMm, innerDiameterMm, axis?: x\|y\|z, center?: [x,y,z] }` (sizes 0.05–5000 mm; which ones are needed depends on the kind: plate = length, width, thickness with `axis` the thickness direction, default `y`; box = length X, height Y, width Z; rod = diameter, length with `axis` the length direction, default `x`; tube = outer and inner diameter, length). Adds a closed part (origin `primitive`, round shapes as 48-sided polygons on the nominal circle) whose category and specification follow the shape (plate → `sheet` with `thicknessMm`; rod/tube → `cutLengthMm` and diameters; box → `custom_3d`), review `user_confirmed`. Undoable (`add_primitive`). `400 invalid_primitive` (missing size, tube inner ≥ outer or wall < 0.05 mm) or validation errors |
 | GET | `/api/part-designs?page&pageSize` | Summaries with active part count and `sourceKind` |
 | GET | `/api/part-designs/{id}` | Project, parts (active and superseded), history (last 50), `canUndo` / `canRedo` |

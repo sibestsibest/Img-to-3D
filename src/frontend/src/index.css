@@ -1685,3 +1685,60 @@ details.card summary {
   margin: 0.2rem 0 0.4rem;
   padding-left: 1.1rem;
 }
+
+/* ---- Geometry origin badges and the parametric workflow ---- */
+
+.tag--origin {
+  font-weight: 600;
+}
+
+.tag--origin-parametric {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.tag--origin-ai_predicted {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.tag--origin-photogrammetry,
+.tag--origin-uploaded {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.parametric__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.parametric__components {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.parametric__files {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.1rem;
+}
+
+.parametric__files li {
+  margin: 0.15rem 0;
+}
+
+.parametric__params > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.parametric__params dd {
+  margin: 0;
+}
+
+.parametric__unavailable code {
+  font-size: 0.85em;
+}

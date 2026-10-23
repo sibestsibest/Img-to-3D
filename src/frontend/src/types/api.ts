@@ -37,6 +37,9 @@ export interface Job {
   dimensionsMm: Dimensions | null
   scale: { axis: ScaleAxis; targetMm: number; mmPerModelUnit: number } | null
   downloads: { glb: boolean; stl: boolean; stlError: string | null }
+  /** Inference engine that predicted the mesh (TripoSR, StableFast3D, SPAR3D); null for older jobs. */
+  engine: string | null
+  origin: GeometryOrigin
 }
 
 export interface PagedResult<T> {
@@ -51,9 +54,30 @@ export interface ProblemDetails {
   detail?: string
   status?: number
   code?: string
+  /** Request field the error is about (e.g. "parameters.height"), when the server knows it. */
+  field?: string
   errors?: Record<string, string[]>
 }
 
 export const TERMINAL_STATUSES: readonly JobStatus[] = ['Succeeded', 'Failed', 'Cancelled']
 
 export const isTerminal = (status: JobStatus) => TERMINAL_STATUSES.includes(status)
+
+/** Where a model's geometry comes from (shown with every model). */
+export type GeometryOrigin = 'ai_predicted' | 'parametric' | 'uploaded' | 'manual' | 'photogrammetry'
+
+export type EngineStatus = 'ready' | 'missing' | 'disabled' | 'failed' | 'unavailable'
+
+/** GET /api/capabilities: which geometry engines can be used now, and why not. */
+export interface EngineCapability {
+  id: string
+  kind: 'parametric' | 'single_image_ai' | 'photogrammetry'
+  origin: GeometryOrigin
+  status: EngineStatus
+  version: string | null
+  reason: string | null
+}
+
+export interface Capabilities {
+  engines: EngineCapability[]
+}

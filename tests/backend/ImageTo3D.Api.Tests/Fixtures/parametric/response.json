@@ -1,0 +1,484 @@
+{
+  "schemaVersion": 1,
+  "status": "succeeded",
+  "engine": {
+    "name": "Parametric",
+    "version": "0.1.0"
+  },
+  "origin": "parametric",
+  "template": "assembly",
+  "units": "mm",
+  "upAxis": "y",
+  "scale": {
+    "status": "exact",
+    "mmPerUnit": 1.0
+  },
+  "parameters": {
+    "segments": 16,
+    "components": [
+      {
+        "name": "base",
+        "shape": "plate",
+        "size_x": 40,
+        "size_y": 30,
+        "thickness": 1.5,
+        "holes": [],
+        "transform": {
+          "rotate_deg": [
+            -90,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "name": "skin",
+        "shape": "shell",
+        "outer_diameter": 30,
+        "thickness": 0.5,
+        "angle_deg": 180,
+        "length": 20,
+        "transform": {
+          "translate": [
+            0,
+            10,
+            0
+          ]
+        }
+      },
+      {
+        "name": "mast",
+        "shape": "rod",
+        "diameter": 2,
+        "length": 25,
+        "transform": {
+          "rotate_deg": [
+            -90,
+            0,
+            0
+          ],
+          "translate": [
+            10,
+            1.5,
+            0
+          ]
+        }
+      },
+      {
+        "name": "sleeve",
+        "shape": "tube",
+        "outer_diameter": 5,
+        "inner_diameter": 3,
+        "length": 8,
+        "transform": {
+          "rotate_deg": [
+            -90,
+            0,
+            0
+          ],
+          "translate": [
+            -10,
+            1.5,
+            0
+          ]
+        }
+      },
+      {
+        "name": "block",
+        "shape": "box",
+        "size_x": 6,
+        "size_y": 4,
+        "size_z": 6,
+        "transform": {
+          "translate": [
+            0,
+            3.5,
+            10
+          ]
+        }
+      }
+    ]
+  },
+  "derived": {},
+  "dimensions": {
+    "min": [
+      -20.0,
+      0.0,
+      -15.0
+    ],
+    "max": [
+      20.0,
+      26.5,
+      20.0
+    ],
+    "size": [
+      40.0,
+      26.5,
+      35.0
+    ]
+  },
+  "validation": {
+    "valid": true,
+    "components": 5,
+    "triangles": 280,
+    "closedComponents": 5
+  },
+  "components": [
+    {
+      "name": "base",
+      "role": "plate",
+      "category": "sheet",
+      "material": "PS",
+      "thicknessMm": 1.5,
+      "quantity": 1,
+      "bomItem": 1,
+      "pattern": "flat",
+      "forming": null,
+      "sizeMm": {
+        "length": 40.0,
+        "width": 30.0
+      },
+      "validation": {
+        "vertexCount": 8,
+        "triangleCount": 12,
+        "degenerateTriangles": 0,
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "consistentWinding": true,
+        "closed": true,
+        "bodies": 1,
+        "volumeMm3": 1800.0,
+        "areaMm2": 2610.0,
+        "bounds": {
+          "min": [
+            -20.0,
+            0.0,
+            -15.0
+          ],
+          "max": [
+            20.0,
+            1.5,
+            15.0
+          ],
+          "size": [
+            40.0,
+            1.5,
+            30.0
+          ]
+        },
+        "valid": true
+      }
+    },
+    {
+      "name": "skin",
+      "role": "shell",
+      "category": "sheet",
+      "material": "PS",
+      "thicknessMm": 0.5,
+      "quantity": 1,
+      "bomItem": 2,
+      "pattern": "developed",
+      "forming": "roll",
+      "sizeMm": {
+        "length": 20.0,
+        "developedWidth": 46.3385,
+        "outerRadius": 15.0
+      },
+      "validation": {
+        "vertexCount": 36,
+        "triangleCount": 68,
+        "degenerateTriangles": 0,
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "consistentWinding": true,
+        "closed": true,
+        "bodies": 1,
+        "volumeMm3": 451.56645,
+        "areaMm2": 1906.809285,
+        "bounds": {
+          "min": [
+            -15.0,
+            10.0,
+            0.0
+          ],
+          "max": [
+            15.0,
+            25.0,
+            20.0
+          ],
+          "size": [
+            30.0,
+            15.0,
+            20.0
+          ]
+        },
+        "valid": true
+      }
+    },
+    {
+      "name": "mast",
+      "role": "rod",
+      "category": "rod",
+      "material": "PS",
+      "thicknessMm": null,
+      "quantity": 1,
+      "bomItem": 3,
+      "pattern": null,
+      "forming": null,
+      "sizeMm": {
+        "diameter": 2.0,
+        "length": 25.0
+      },
+      "validation": {
+        "vertexCount": 32,
+        "triangleCount": 60,
+        "degenerateTriangles": 0,
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "consistentWinding": true,
+        "closed": true,
+        "bodies": 1,
+        "volumeMm3": 76.536686,
+        "areaMm2": 162.195193,
+        "bounds": {
+          "min": [
+            9.0,
+            1.5,
+            -1.0
+          ],
+          "max": [
+            11.0,
+            26.5,
+            1.0
+          ],
+          "size": [
+            2.0,
+            25.0,
+            2.0
+          ]
+        },
+        "valid": true
+      }
+    },
+    {
+      "name": "sleeve",
+      "role": "tube",
+      "category": "tube",
+      "material": "PS",
+      "thicknessMm": null,
+      "quantity": 1,
+      "bomItem": 4,
+      "pattern": null,
+      "forming": null,
+      "sizeMm": {
+        "outerDiameter": 5.0,
+        "innerDiameter": 3.0,
+        "length": 8.0
+      },
+      "validation": {
+        "vertexCount": 64,
+        "triangleCount": 128,
+        "degenerateTriangles": 0,
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "consistentWinding": true,
+        "closed": true,
+        "bodies": 1,
+        "volumeMm3": 97.966959,
+        "areaMm2": 224.264229,
+        "bounds": {
+          "min": [
+            -12.5,
+            1.5,
+            -2.5
+          ],
+          "max": [
+            -7.5,
+            9.5,
+            2.5
+          ],
+          "size": [
+            5.0,
+            8.0,
+            5.0
+          ]
+        },
+        "valid": true
+      }
+    },
+    {
+      "name": "block",
+      "role": "box",
+      "category": "custom_3d",
+      "material": "PS",
+      "thicknessMm": null,
+      "quantity": 1,
+      "bomItem": 5,
+      "pattern": null,
+      "forming": null,
+      "sizeMm": {},
+      "validation": {
+        "vertexCount": 8,
+        "triangleCount": 12,
+        "degenerateTriangles": 0,
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "consistentWinding": true,
+        "closed": true,
+        "bodies": 1,
+        "volumeMm3": 144.0,
+        "areaMm2": 168.0,
+        "bounds": {
+          "min": [
+            -3.0,
+            1.5,
+            7.0
+          ],
+          "max": [
+            3.0,
+            5.5,
+            13.0
+          ],
+          "size": [
+            6.0,
+            4.0,
+            6.0
+          ]
+        },
+        "valid": true
+      }
+    }
+  ],
+  "bom": [
+    {
+      "item": 1,
+      "role": "plate",
+      "quantity": 1,
+      "components": [
+        "base"
+      ]
+    },
+    {
+      "item": 2,
+      "role": "shell",
+      "quantity": 1,
+      "components": [
+        "skin"
+      ]
+    },
+    {
+      "item": 3,
+      "role": "rod",
+      "quantity": 1,
+      "components": [
+        "mast"
+      ]
+    },
+    {
+      "item": 4,
+      "role": "tube",
+      "quantity": 1,
+      "components": [
+        "sleeve"
+      ]
+    },
+    {
+      "item": 5,
+      "role": "box",
+      "quantity": 1,
+      "components": [
+        "block"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "kind": "glb",
+      "path": "model.glb",
+      "bytes": 8236,
+      "sha256": "665ffeb38c26fbb49508e7fdc9b41296064e2c0ba4f6b470e07b5c4853c2b165",
+      "units": "m",
+      "upAxis": "y"
+    },
+    {
+      "kind": "stl",
+      "path": "model.stl",
+      "bytes": 14084,
+      "sha256": "75a468bc853c6e2920ce10d61ebbae4ec26fa69f4febd898ee2c259e3350431a",
+      "units": "mm",
+      "upAxis": "z"
+    },
+    {
+      "kind": "obj",
+      "path": "model.obj",
+      "bytes": 6465,
+      "sha256": "718a47f2db7271f90997c3316562ccb48b458e627fdf6908269c939cd46f3a66",
+      "units": "mm",
+      "upAxis": "y"
+    },
+    {
+      "kind": "template_svg",
+      "path": "templates/item01_plate.svg",
+      "bytes": 2323,
+      "sha256": "858c2ab387f111eb382b3606bc3fd7e4f09c8a0559cae3be899f4fb0e894df25",
+      "item": 1,
+      "page": "A4 portrait",
+      "scale": "1:1"
+    },
+    {
+      "kind": "template_dxf",
+      "path": "templates/item01_plate.dxf",
+      "bytes": 14409,
+      "sha256": "a315f353c0f3dda489575b52890e743cccfae5bdf26bd39b405e0e36ab208ee1",
+      "item": 1,
+      "scale": "1:1"
+    },
+    {
+      "kind": "template_svg",
+      "path": "templates/item02_shell.svg",
+      "bytes": 2479,
+      "sha256": "2c72f1a3d334a0be7fb94526ad4a494d9c3d5128894ffe5e8a65de17cd26bd05",
+      "item": 2,
+      "page": "A4 portrait",
+      "scale": "1:1"
+    },
+    {
+      "kind": "template_dxf",
+      "path": "templates/item02_shell.dxf",
+      "bytes": 14408,
+      "sha256": "0ae70d91a91051252694606638e66aa1ff6359f66a1b0da30dc0bd9726c43aa5",
+      "item": 2,
+      "scale": "1:1"
+    },
+    {
+      "kind": "templates_pdf",
+      "path": "templates/templates.pdf",
+      "bytes": 3271,
+      "sha256": "09a292df89686cdf921fb894267bcbdcf71475457d61e746742354a69be6dab1",
+      "pages": 2,
+      "scale": "1:1"
+    },
+    {
+      "kind": "views_svg",
+      "path": "views/views.svg",
+      "bytes": 7521,
+      "sha256": "ea18f151181e11ab29f4df7e4ffa001e58988d3ca721380455bf19f279f89448",
+      "scale": "1:1"
+    },
+    {
+      "kind": "views_pdf",
+      "path": "views/views.pdf",
+      "bytes": 3573,
+      "sha256": "b192ebd4cdf53b45007e6c0680fbc525b2ec2c9f29cd10f8906f92fe23018eaf",
+      "scale": "1:1"
+    },
+    {
+      "kind": "bom",
+      "path": "bom.csv",
+      "bytes": 586,
+      "sha256": "dc40c49c8d095ebb5b9590f822d03578c1fd6c4d90261aedf9e807c147534413"
+    }
+  ],
+  "issues": [],
+  "error": null
+}

@@ -111,7 +111,14 @@ export function PartPropertiesPanel({ part, busy, onSave, onDuplicate, onDelete 
           I have reviewed the category and fabrication method
         </label>
 
-        <Section title="Estimated dimensions" note="Measured on the generated model at its current scale: an estimate, not a measurement of the real part.">
+        <Section
+          title={part.estimated.status === 'exact' ? 'Dimensions' : 'Estimated dimensions'}
+          note={
+            part.estimated.status === 'exact'
+              ? 'Measured on the geometry generated from your parameters: exact (oriented bounding box).'
+              : 'Measured on the generated model at its current scale: an estimate, not a measurement of the real part.'
+          }
+        >
           <dl className="facts">
             <dt>Length</dt>
             <dd>{formatMm(part.estimated.lengthMm)} mm</dd>

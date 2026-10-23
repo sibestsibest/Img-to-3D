@@ -1,0 +1,6 @@
+﻿item,quantity,role,category,material,thickness_mm,dimensions_mm,pattern,pattern_size_mm,forming,template,components,notes
+1,1,plate,sheet,PS,1.5,length=40; width=30,flat,40 x 30,,templates/item01_plate.svg,base,
+2,1,shell,sheet,PS,0.5,length=20; developedWidth=46.3385; outerRadius=15,developed,20 x 46.3385,roll,templates/item02_shell.svg,skin,Roll to 30 mm outside diameter (180° arc); pattern length at mid-thickness.
+3,1,rod,rod,PS,,diameter=2; length=25,,,,,mast,
+4,1,tube,tube,PS,,outerDiameter=5; innerDiameter=3; length=8,,,,,sleeve,
+5,1,box,custom_3d,PS,,,,,,,block,

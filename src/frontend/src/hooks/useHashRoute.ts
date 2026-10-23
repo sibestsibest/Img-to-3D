@@ -3,8 +3,9 @@ import { useCallback, useEffect, useState } from 'react'
 /**
  * Minimal hash routing (the app has no router): the workspace is the default view (#/jobs/<id> opens it
  * on one generation job), part design
- * lives under #/designs and #/designs/<id> and reference searches under #/references and
- * #/references/<id>, so a project or search survives a reload and can be bookmarked.
+ * lives under #/designs and #/designs/<id>, reference searches under #/references and
+ * #/references/<id>, and new parametric models under #/parametric (#/parametric/<project id> for a
+ * variant of an earlier one), so a project or search survives a reload and can be bookmarked.
  */
 export type Route =
   | { view: 'workspace' }
@@ -13,6 +14,8 @@ export type Route =
   | { view: 'design'; id: string }
   | { view: 'references' }
   | { view: 'reference'; id: string }
+  /** New parametric model; <from> prefills it from an earlier parametric project (a variant). */
+  | { view: 'parametric'; from: string | null }
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -27,6 +30,7 @@ export function parseRoute(hash: string): Route {
     if (parts.length === 1) return { view: 'references' }
     return GUID.test(parts[1]) ? { view: 'reference', id: parts[1].toLowerCase() } : { view: 'references' }
   }
+  if (parts[0] === 'parametric') return { view: 'parametric', from: parts.length > 1 && GUID.test(parts[1]) ? parts[1].toLowerCase() : null }
   return { view: 'workspace' }
 }
 
@@ -44,6 +48,8 @@ export function routeHash(route: Route): string {
       return '#/references'
     case 'reference':
       return `#/references/${route.id}`
+    case 'parametric':
+      return route.from ? `#/parametric/${route.from}` : '#/parametric'
   }
 }
 

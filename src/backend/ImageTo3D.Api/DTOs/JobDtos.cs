@@ -32,7 +32,9 @@ public sealed record JobDto(
     MeshInfoDto? Mesh,
     DimensionsDto? DimensionsMm,
     ScaleInfoDto? Scale,
-    DownloadsDto Downloads)
+    DownloadsDto Downloads,
+    string? Engine = null,
+    string Origin = GeometryOrigins.AiPredicted)
 {
     public static JobDto From(GenerationJob job)
     {
@@ -53,7 +55,8 @@ public sealed record JobDto(
             job.VertexCount is { } v && job.TriangleCount is { } t ? new MeshInfoDto(v, t) : null,
             size is { } d ? new DimensionsDto(Math.Round(d.X, 3), Math.Round(d.Y, 3), Math.Round(d.Z, 3)) : null,
             job.ScaleAxis is { } axis && job.ScaleTargetMm is { } target && job.MmPerModelUnit is { } f ? new ScaleInfoDto(axis, target, f) : null,
-            new DownloadsDto(job.Status == JobStatus.Succeeded && job.HasGlb, job.Status == JobStatus.Succeeded && job.HasStl, job.StlError));
+            new DownloadsDto(job.Status == JobStatus.Succeeded && job.HasGlb, job.Status == JobStatus.Succeeded && job.HasStl, job.StlError),
+            job.Engine);
     }
 }
 

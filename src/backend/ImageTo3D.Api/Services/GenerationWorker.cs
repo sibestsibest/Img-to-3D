@@ -110,16 +110,16 @@ public sealed class GenerationWorker(
         job.Stage = "Submitting";
         await SaveAsync(db, job, cancellationToken);
 
+        // Recorded with the job so the result says which engine predicted it (null if the service does not say).
+        var engine = (await inference.GetHealthAsync(cancellationToken))?.Engine;
+        job.Engine = engine is null ? null : engine.Length > 32 ? engine[..32] : engine;
+
         var extras = await LoadExtrasAsync(store, job.Id, cancellationToken);
-        if (extras.Count > 0)
+        if (extras.Count > 0 && string.Equals(engine, "TripoSR", StringComparison.OrdinalIgnoreCase))
         {
             // Only the Stability AI engines use extra photos; TripoSR would just receive a larger upload.
-            var engine = (await inference.GetHealthAsync(cancellationToken))?.Engine;
-            if (string.Equals(engine, "TripoSR", StringComparison.OrdinalIgnoreCase))
-            {
-                logger.LogInformation("Engine {Engine} does not use extra photos; sending the main photo only", engine);
-                extras = [];
-            }
+            logger.LogInformation("Engine {Engine} does not use extra photos; sending the main photo only", engine);
+            extras = [];
         }
 
         try

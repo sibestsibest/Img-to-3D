@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-  One-time setup: checks prerequisites, restores .NET and npm packages, downloads models.
+  One-time setup: checks prerequisites, restores .NET and npm packages, sets up the parametric
+  geometry worker's Python environment when uv is installed, downloads models.
 
 .PARAMETER Gpu
   Also checks what TripoSR needs to run on an NVIDIA GPU (driver, CUDA 13, cuDNN 9) and restores
@@ -45,6 +46,22 @@ try {
     Push-Location src/frontend
     npm ci
     Pop-Location
+
+    # Parametric geometry worker (Python, optional): without it the rest of the app works and
+    # parametric generation reports "missing".
+    if (Get-Command uv -ErrorAction SilentlyContinue) {
+        $worker = Join-Path $root 'src/parametric-geometry'
+        $python = Join-Path $worker '.venv/Scripts/python.exe'
+        uv python install 3.11
+        if (-not (Test-Path $python)) { uv venv --python 3.11 (Join-Path $worker '.venv') }
+        uv pip install --python $python -r (Join-Path $worker 'requirements.txt')
+        if ($LASTEXITCODE -ne 0) { throw 'Installing the parametric worker packages failed.' }
+        Write-Host 'parametric worker: ready (src/parametric-geometry/.venv)'
+    }
+    else {
+        Write-Warning 'uv not found: the parametric geometry worker is not set up (parametric models stay unavailable). Install uv (winget install astral-sh.uv) and run setup again.'
+    }
+
     if (-not $SkipModels) { & (Join-Path $PSScriptRoot 'download-models.ps1') }
 }
 finally {

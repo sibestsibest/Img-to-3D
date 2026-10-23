@@ -1,12 +1,14 @@
-import type { ExtraPhoto, Job, PagedResult, ProblemDetails, ScaleAxis } from '../types/api'
+import type { Capabilities, ExtraPhoto, Job, PagedResult, ProblemDetails, ScaleAxis } from '../types/api'
 import type {
   AddPrimitiveRequest,
   AssemblyReport,
+  CreateParametricRequest,
   CreateRelationRequest,
   DesignRelease,
   DrawingFormat,
   DrawingReport,
   ExportManifest,
+  ParametricCatalog,
   PartDesignProject,
   PartDesignSummary,
   RelationRequest,
@@ -34,12 +36,15 @@ import { apiLog, formatBody, summarize } from './apiLog'
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
+  /** Request field the error is about (e.g. "parameters.height"), when the server says. */
+  readonly field: string | null
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, field: string | null = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.field = field
   }
 }
 
@@ -59,7 +64,7 @@ export async function toApiError(response: Response): Promise<ApiError> {
     (response.status === 502 || response.status === 504
       ? 'The server is unreachable. Is the API running?'
       : `Request failed (${response.status}).`)
-  return new ApiError(response.status, problem.code ?? 'error', message)
+  return new ApiError(response.status, problem.code ?? 'error', message, problem.field ?? null)
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -165,6 +170,17 @@ export const designApi = {
   compareReleases: (id: string, from: number, to: number) => request<ReleaseDiff>(designPath(id, `/releases/compare?from=${from}&to=${to}`)),
   undo: (id: string) => request<PartDesignProject>(designPath(id, '/undo'), { method: 'POST' }),
   redo: (id: string) => request<PartDesignProject>(designPath(id, '/redo'), { method: 'POST' }),
+}
+
+export const parametricApi = {
+  /** Templates and their parameters, from the geometry worker (503 when it is not set up). */
+  templates: (signal?: AbortSignal) => request<ParametricCatalog>('/part-designs/parametric/templates', { signal }),
+  /** Generates the model (a few seconds) and returns the new project; refusals carry the offending field. */
+  create: (body: CreateParametricRequest) => request<PartDesignProject>('/part-designs/parametric', json('POST', body)),
+}
+
+export const capabilitiesApi = {
+  get: (signal?: AbortSignal) => request<Capabilities>('/capabilities', { signal }),
 }
 
 const referencePath = (id: string, rest = '') => `/references/${encodeURIComponent(id)}${rest}`

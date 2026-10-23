@@ -3,6 +3,7 @@ using ImageTo3D.Api.Configuration;
 using ImageTo3D.Api.Data;
 using ImageTo3D.Api.DTOs;
 using ImageTo3D.Api.Models;
+using ImageTo3D.Api.Services.Parametric;
 using ImageTo3D.Api.Services.Storage;
 using ImageTo3D.Core.Drawing;
 using ImageTo3D.Core.Geometry;
@@ -22,6 +23,7 @@ public sealed partial class PartDesignService(
     AppDbContext db,
     IArtifactStore jobStore,
     IDesignArtifactStore store,
+    IParametricWorker parametric,
     IOwnerAccessor owner,
     IOptions<PartDesignOptions> options,
     TimeProvider time,
@@ -294,7 +296,7 @@ public sealed partial class PartDesignService(
             .Take(pageSize)
             .Select(p => new PartDesignSummaryDto(p.Id, p.Name, p.SourceJobId, p.SourceKind, p.SourceFileName, p.Parts.Count(x => x.State == DesignPartState.Active), p.CreatedAt, p.UpdatedAt))
             .ToListAsync(cancellationToken);
-        return new PagedResult<PartDesignSummaryDto>(items.Select(i => i with { CreatedAt = Utc(i.CreatedAt), UpdatedAt = Utc(i.UpdatedAt) }).ToList(), page, pageSize, total);
+        return new PagedResult<PartDesignSummaryDto>(items.Select(i => i with { CreatedAt = Utc(i.CreatedAt), UpdatedAt = Utc(i.UpdatedAt), Origin = GeometryOrigins.ForSource(i.SourceKind) }).ToList(), page, pageSize, total);
     }
 
     public async Task<PartDesignProjectDto> GetAsync(Guid id, CancellationToken cancellationToken) => ToDto(await LoadAsync(id, cancellationToken));
@@ -1000,7 +1002,7 @@ public sealed partial class PartDesignService(
             project.SourceFileName,
             SourceDto(project),
             project.MmPerModelUnit,
-            "estimated",
+            project.SourceKind is DesignSourceKinds.Parametric ? "exact" : "estimated",
             CoordinateSystem,
             project.FitAllowanceMinMm,
             project.FitAllowanceMaxMm,
@@ -1011,7 +1013,9 @@ public sealed partial class PartDesignService(
             RelationDtos(project),
             history,
             project.Operations.Any(o => !o.IsUndone),
-            project.Operations.Any(o => o.IsUndone));
+            project.Operations.Any(o => o.IsUndone),
+            Origin: GeometryOrigins.ForSource(project.SourceKind),
+            Parametric: ParametricInfo(project));
     }
 
     private static DesignSourceDto SourceDto(PartDesignProject p) =>
@@ -1034,7 +1038,8 @@ public sealed partial class PartDesignService(
             p.Category,
             p.ReviewStatus,
             new SuggestionDto(p.SuggestedCategory, p.SuggestionConfidence, JsonSerializer.Deserialize<List<string>>(p.SuggestionReasonsJson, Json) ?? []),
-            new EstimatedDimensionsDto(p.EstimatedLengthMm, p.EstimatedWidthMm, p.EstimatedThicknessMm, p.EstimatedOuterDiameterMm, p.EstimatedInnerDiameterMm),
+            // Measured on generated parametric geometry, the sizes are the entered ones, not estimates.
+            new EstimatedDimensionsDto(p.EstimatedLengthMm, p.EstimatedWidthMm, p.EstimatedThicknessMm, p.EstimatedOuterDiameterMm, p.EstimatedInnerDiameterMm, p.Origin == PartOrigins.Parametric ? "exact" : "estimated"),
             new ConfirmedDimensionsDto(p.ConfirmedLengthMm, p.ConfirmedWidthMm, p.ConfirmedHeightMm, anyConfirmed ? ReviewStatuses.UserConfirmed : null),
             new ManufacturingSpecDto(
                 p.Material, p.ManufacturingMethod, p.Quantity, p.ThicknessMm, p.DiameterMm, p.OuterDiameterMm, p.InnerDiameterMm,

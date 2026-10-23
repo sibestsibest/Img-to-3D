@@ -5,6 +5,7 @@ using ImageTo3D.Api.DTOs;
 using ImageTo3D.Api.Models;
 using ImageTo3D.Api.Services.Embeddings;
 using ImageTo3D.Api.Services.Inference;
+using ImageTo3D.Api.Services.Parametric;
 using ImageTo3D.Api.Services.References;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -20,9 +21,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
     private readonly Dictionary<string, string?> _settings;
+    private readonly bool _realParametricWorker;
 
-    public ApiFactory(Dictionary<string, string?>? overrides = null)
+    /// <param name="realParametricWorker">Use the real Python worker (src/parametric-geometry) instead of <see cref="FakeParametricWorker"/>.</param>
+    public ApiFactory(Dictionary<string, string?>? overrides = null, bool realParametricWorker = false)
     {
+        _realParametricWorker = realParametricWorker;
         Root = Path.Combine(Path.GetTempPath(), "imageto3d-tests", Guid.NewGuid().ToString("N"));
         _settings = new Dictionary<string, string?>
         {
@@ -31,6 +35,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             ["Storage:DesignRootPath"] = Path.Combine(Root, "designs"),
             ["Storage:ReferenceRootPath"] = Path.Combine(Root, "references"),
             ["Storage:ReferenceCachePath"] = Path.Combine(Root, "reference-cache"),
+            ["Parametric:WorkRoot"] = Path.Combine(Root, "parametric-work"),
             ["ReferenceSearch:RetryDelay"] = "00:00:00.010",
             ["ReferenceSearch:SearchesPerMinute"] = "1000",
             ["InferenceService:PollInterval"] = "00:00:00.020",
@@ -53,6 +58,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     /// <summary>Replaces CLIP so ranking is deterministic and needs no model files.</summary>
     public FakeEmbedder Embedder { get; } = new();
 
+    public FakeParametricWorker Parametric { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -65,6 +72,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient(ReferenceHttp.ClientName).ConfigurePrimaryHttpMessageHandler(() => Web);
             services.RemoveAll<IImageEmbedder>();
             services.AddSingleton<IImageEmbedder>(Embedder);
+            if (!_realParametricWorker)
+            {
+                services.RemoveAll<IParametricWorker>();
+                services.AddSingleton<IParametricWorker>(Parametric);
+            }
         });
     }
 

@@ -1,6 +1,8 @@
+using ImageTo3D.Api.Configuration;
 using ImageTo3D.Api.DTOs;
 using ImageTo3D.Api.Services.PartDesign;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ImageTo3D.Api.Controllers;
 
@@ -35,6 +37,41 @@ public sealed class PartDesignsController(PartDesignService designs) : Controlle
     {
         var project = await designs.CreateBlankAsync(request, cancellationToken);
         return CreatedAtAction(nameof(Get), new { id = project.Id }, project);
+    }
+
+    /// <summary>Templates of the parametric geometry worker: parameters with defaults, ranges and units, and the PS sheet thicknesses.</summary>
+    [HttpGet("parametric/templates")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    public Task<System.Text.Json.JsonElement> ParametricTemplates(CancellationToken cancellationToken) => designs.ParametricTemplatesAsync(cancellationToken);
+
+    /// <summary>
+    /// Generate a model from template parameters (deterministic, exact sizes) and open it as a project:
+    /// one part per component. Refused parameters come back as 400/422 with the offending <c>field</c>.
+    /// </summary>
+    [HttpPost("parametric")]
+    [Consumes("application/json")]
+    [EnableRateLimiting(RateLimitPolicies.Uploads)]
+    [ProducesResponseType<PartDesignProjectDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status504GatewayTimeout)]
+    public async Task<IActionResult> CreateParametric([FromBody] CreateParametricDesignRequest request, CancellationToken cancellationToken)
+    {
+        var project = await designs.CreateParametricAsync(request, cancellationToken);
+        return CreatedAtAction(nameof(Get), new { id = project.Id }, project);
+    }
+
+    /// <summary>A file generated with a parametric project: templates-pdf, views-pdf, views-svg, bom, stl, obj or package.</summary>
+    [HttpGet("{id:guid}/parametric/files/{kind}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ParametricFile(Guid id, string kind, [FromQuery] bool download = true, CancellationToken cancellationToken = default)
+    {
+        var file = await designs.OpenParametricFileAsync(id, kind, cancellationToken);
+        return download ? File(file.Content, file.ContentType, file.FileName) : File(file.Content, file.ContentType);
     }
 
     /// <summary>Add a plate, block, rod or tube with exact millimetre sizes (reversible with undo).</summary>

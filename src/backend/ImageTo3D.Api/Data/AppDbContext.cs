@@ -42,6 +42,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         job.Property(j => j.StlError).HasMaxLength(500);
         job.Property(j => j.OriginalFileName).HasMaxLength(128);
         job.Property(j => j.OriginalFormat).HasMaxLength(8);
+        job.Property(j => j.Engine).HasMaxLength(32);
         job.Ignore(j => j.IsTerminal);
         job.Ignore(j => j.SizeMm);
 
@@ -60,6 +61,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         project.Property(p => p.SourceKind).HasMaxLength(24).IsRequired();
         project.Property(p => p.SourceLicense).HasMaxLength(32);
         project.Property(p => p.SourceAttribution).HasMaxLength(700);
+        project.Property(p => p.ParametricTemplate).HasMaxLength(32);
+        project.Property(p => p.ParametricEngineVersion).HasMaxLength(16);
         project.HasIndex(p => new { p.OwnerKeyHash, p.UpdatedAt });
         project.HasMany(p => p.Parts).WithOne().HasForeignKey(p => p.ProjectId).OnDelete(DeleteBehavior.Cascade);
         project.HasMany(p => p.Operations).WithOne().HasForeignKey(o => o.ProjectId).OnDelete(DeleteBehavior.Cascade);

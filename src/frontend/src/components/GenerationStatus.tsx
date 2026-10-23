@@ -1,3 +1,5 @@
+import { engineLabel } from '../hooks/useEngineInfo'
+import { OriginBadge } from './OriginBadge'
 import { describeJob, STAGES } from '../services/stages'
 import type { Job } from '../types/api'
 
@@ -17,6 +19,7 @@ export function GenerationStatus({ job, onCancel, cancelling }: Props) {
       <div className="status-header">
         <span className={`badge badge--${job.status.toLowerCase()}`}>{job.status}</span>
         <span className="status-text">{describeJob(job)}</span>
+        {job.status === 'Succeeded' && <OriginBadge origin={job.origin} detail={job.engine ? engineLabel(job.engine) : null} />}
       </div>
 
       {active && (
