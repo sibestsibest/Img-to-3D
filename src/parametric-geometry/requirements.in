@@ -1,0 +1,8 @@
+# Direct dependencies; requirements.txt is the pinned lock (uv pip compile requirements.in -o requirements.txt --python-version 3.11).
+numpy
+trimesh
+shapely
+mapbox-earcut
+ezdxf
+reportlab
+pytest

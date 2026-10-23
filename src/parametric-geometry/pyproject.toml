@@ -1,0 +1,11 @@
+[project]
+name = "imageto3d-parametric"
+version = "0.1.0"
+description = "Deterministic parametric geometry worker for ImageTo3D (PS sheet scratch-building)"
+requires-python = ">=3.11,<3.12"
+# Pinned versions: requirements.txt (generated from requirements.in with uv pip compile).
+dependencies = ["numpy", "trimesh", "shapely", "mapbox-earcut", "ezdxf", "reportlab"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
