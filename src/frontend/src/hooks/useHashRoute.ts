@@ -16,6 +16,8 @@ export type Route =
   | { view: 'reference'; id: string }
   /** New parametric model; <from> prefills it from an earlier parametric project (a variant). */
   | { view: 'parametric'; from: string | null }
+  | { view: 'photogrammetry' }
+  | { view: 'photoset'; id: string }
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -29,6 +31,10 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === 'references') {
     if (parts.length === 1) return { view: 'references' }
     return GUID.test(parts[1]) ? { view: 'reference', id: parts[1].toLowerCase() } : { view: 'references' }
+  }
+  if (parts[0] === 'photogrammetry') {
+    if (parts.length === 1) return { view: 'photogrammetry' }
+    return GUID.test(parts[1]) ? { view: 'photoset', id: parts[1].toLowerCase() } : { view: 'photogrammetry' }
   }
   if (parts[0] === 'parametric') return { view: 'parametric', from: parts.length > 1 && GUID.test(parts[1]) ? parts[1].toLowerCase() : null }
   return { view: 'workspace' }
@@ -50,6 +56,10 @@ export function routeHash(route: Route): string {
       return `#/references/${route.id}`
     case 'parametric':
       return route.from ? `#/parametric/${route.from}` : '#/parametric'
+    case 'photogrammetry':
+      return '#/photogrammetry'
+    case 'photoset':
+      return `#/photogrammetry/${route.id}`
   }
 }
 

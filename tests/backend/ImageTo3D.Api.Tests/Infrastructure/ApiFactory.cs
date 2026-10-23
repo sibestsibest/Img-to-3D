@@ -6,6 +6,8 @@ using ImageTo3D.Api.Models;
 using ImageTo3D.Api.Services.Embeddings;
 using ImageTo3D.Api.Services.Inference;
 using ImageTo3D.Api.Services.Parametric;
+using ImageTo3D.Api.Services.Processes;
+using Microsoft.Extensions.Logging.Abstractions;
 using ImageTo3D.Api.Services.References;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -36,6 +38,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             ["Storage:ReferenceRootPath"] = Path.Combine(Root, "references"),
             ["Storage:ReferenceCachePath"] = Path.Combine(Root, "reference-cache"),
             ["Parametric:WorkRoot"] = Path.Combine(Root, "parametric-work"),
+            ["Storage:PhotogrammetryRootPath"] = Path.Combine(Root, "photogrammetry"),
+            ["Photogrammetry:WorkRoot"] = Path.Combine(Root, "photogrammetry-work"),
+            ["Photogrammetry:ProgressInterval"] = "00:00:00.050",
             ["ReferenceSearch:RetryDelay"] = "00:00:00.010",
             ["ReferenceSearch:SearchesPerMinute"] = "1000",
             ["InferenceService:PollInterval"] = "00:00:00.020",
@@ -60,6 +65,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public FakeParametricWorker Parametric { get; } = new();
 
+    /// <summary>Plays meshroom_batch and nvidia-smi; other processes (the Python worker) run for real.</summary>
+    public FakeProcessRunner Processes { get; } = new(new ProcessRunner(NullLogger<ProcessRunner>.Instance));
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -72,6 +80,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddHttpClient(ReferenceHttp.ClientName).ConfigurePrimaryHttpMessageHandler(() => Web);
             services.RemoveAll<IImageEmbedder>();
             services.AddSingleton<IImageEmbedder>(Embedder);
+            services.RemoveAll<IProcessRunner>();
+            services.AddSingleton<IProcessRunner>(Processes);
             if (!_realParametricWorker)
             {
                 services.RemoveAll<IParametricWorker>();

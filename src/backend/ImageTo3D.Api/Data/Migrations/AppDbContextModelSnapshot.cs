@@ -561,6 +561,9 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.Property<Guid?>("SourceModelCandidateId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("SourcePhotogrammetryJobId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("SourceReferenceSessionId")
                         .HasColumnType("TEXT");
 
@@ -661,6 +664,186 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.HasIndex("ProjectId");
 
                     b.ToTable("PartRelations", (string)null);
+                });
+
+            modelBuilder.Entity("ImageTo3D.Api.Models.PhotogrammetryJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("CancelRequested")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EngineVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(48)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ExitCode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("HasStl")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("InspectionJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("MmPerModelUnit")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("ModelSizeX")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("ModelSizeY")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("ModelSizeZ")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("NodesDone")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OutputsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("OwnerKeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Pipeline")
+                        .HasMaxLength(48)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScaleAxis")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScaleStatus")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("ScaleTargetMm")
+                        .HasColumnType("REAL");
+
+                    b.Property<Guid?>("SourceReferenceSessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Stage")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StlError")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TriangleCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("VertexCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("OwnerKeyHash", "CreatedAt");
+
+                    b.ToTable("PhotogrammetryJobs", (string)null);
+                });
+
+            modelBuilder.Entity("ImageTo3D.Api.Models.PhotogrammetryPhoto", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("DHash")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("HasExif")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginalName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Sharpness")
+                        .HasColumnType("REAL");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "SortOrder");
+
+                    b.ToTable("PhotogrammetryPhotos", (string)null);
                 });
 
             modelBuilder.Entity("ImageTo3D.Api.Models.ReferenceCandidate", b =>
@@ -1030,6 +1213,15 @@ namespace ImageTo3D.Api.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ImageTo3D.Api.Models.PhotogrammetryPhoto", b =>
+                {
+                    b.HasOne("ImageTo3D.Api.Models.PhotogrammetryJob", null)
+                        .WithMany("Photos")
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ImageTo3D.Api.Models.ReferenceCandidate", b =>
                 {
                     b.HasOne("ImageTo3D.Api.Models.ReferenceSession", null)
@@ -1046,6 +1238,11 @@ namespace ImageTo3D.Api.Data.Migrations
                     b.Navigation("Parts");
 
                     b.Navigation("Relations");
+                });
+
+            modelBuilder.Entity("ImageTo3D.Api.Models.PhotogrammetryJob", b =>
+                {
+                    b.Navigation("Photos");
                 });
 
             modelBuilder.Entity("ImageTo3D.Api.Models.ReferenceSession", b =>

@@ -1002,6 +1002,7 @@ public sealed partial class PartDesignService(
             project.SourceFileName,
             SourceDto(project),
             project.MmPerModelUnit,
+            // Photogrammetry stays "estimated": even calibrated, only one dimension was measured.
             project.SourceKind is DesignSourceKinds.Parametric ? "exact" : "estimated",
             CoordinateSystem,
             project.FitAllowanceMinMm,

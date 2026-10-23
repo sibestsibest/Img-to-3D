@@ -6,7 +6,7 @@ public static class ReconstructionRoutes
     /// <summary>Use an existing model the user accepted (uploaded file, geometry checked); no inference runs.</summary>
     public const string ReuseExistingModel = "reuse_existing_model";
 
-    /// <summary>Geometry from several photos. No installed engine does this, so it is always reported as unsupported.</summary>
+    /// <summary>Geometry from several photos with the optional Meshroom photogrammetry engine (unsupported when it is not installed).</summary>
     public const string MultiView = "multi_view_reconstruction";
 
     /// <summary>
@@ -24,10 +24,13 @@ public static class ReconstructionRoutes
     /// <summary>Preference order (master principle: retrieval first, reuse second, reconstruction third).</summary>
     public static readonly IReadOnlyList<string> Ordered = [ReuseExistingModel, MultiView, Hybrid, SingleImage, ManualGeometry];
 
-    /// <summary>Routes that can be started (multi-view cannot).</summary>
-    public static readonly IReadOnlySet<string> Executable = new HashSet<string>(StringComparer.Ordinal) { ReuseExistingModel, Hybrid, SingleImage, ManualGeometry };
+    /// <summary>Routes that can be started (multi-view only while the photogrammetry engine is ready).</summary>
+    public static readonly IReadOnlySet<string> Executable = new HashSet<string>(StringComparer.Ordinal) { ReuseExistingModel, MultiView, Hybrid, SingleImage, ManualGeometry };
 
     public static bool RunsInference(string route) => route is Hybrid or SingleImage;
+
+    /// <summary>Routes that start a photogrammetry job (Meshroom) instead of an inference job.</summary>
+    public static bool RunsPhotogrammetry(string route) => route is MultiView;
 }
 
 /// <summary>Where a reference session stands on the way to geometry.</summary>
@@ -70,6 +73,7 @@ public sealed record ModelEvidence(
 
 /// <param name="UsableSameObjectViews">Accepted pictures the user marked as the same object, with an image, not duplicates and not the input itself.</param>
 /// <param name="Engine">Engine name reported by the inference service health (null when unknown).</param>
+/// <param name="PhotogrammetryReady">Meshroom is installed and usable; <paramref name="PhotogrammetryReason"/> says why not otherwise.</param>
 public sealed record ReconstructionEvidence(
     bool HasInputImage,
     bool Searched,
@@ -80,7 +84,9 @@ public sealed record ReconstructionEvidence(
     IReadOnlyList<ModelEvidence> AcceptedModels,
     string? Engine,
     bool EngineReachable,
-    int MaxExtraPhotos);
+    int MaxExtraPhotos,
+    bool PhotogrammetryReady = false,
+    string? PhotogrammetryReason = null);
 
 /// <param name="Severity">"info", "warning" or "blocker" (the route cannot start because of it).</param>
 public sealed record RouteReason(string Code, string Severity, string Message);
@@ -101,7 +107,7 @@ public sealed record ReconstructionPlan(string Recommended, IReadOnlyList<RouteO
 /// <summary>
 /// Deterministic choice of how to get geometry for a reference session. It never claims more than
 /// the evidence supports: similarity is not identity, one photo cannot recover hidden surfaces, and
-/// no installed engine reconstructs geometry from several photos.
+/// photogrammetry (several photos) runs only when Meshroom is installed.
 /// </summary>
 public static class ReconstructionPlanner
 {
@@ -126,11 +132,7 @@ public static class ReconstructionPlanner
         var routes = new List<RouteOption>
         {
             reuse,
-            new(ReconstructionRoutes.MultiView, RouteAvailability.Unsupported,
-            [
-                new("no_multiview_engine", "blocker",
-                    "No installed engine reconstructs geometry from several photos. With the Stable Fast 3D or SPAR3D engine, extra photos colour the hidden sides (hybrid), but the shape still comes from one photo."),
-            ]),
+            MultiView(e, reuse.IsAvailable),
             Hybrid(e, reuse.IsAvailable),
             Single(e, reuse.IsAvailable),
             new(ReconstructionRoutes.ManualGeometry, RouteAvailability.Available,
@@ -177,6 +179,41 @@ public static class ReconstructionPlanner
         if (best.DerivativesAllowed == false)
             reasons.Add(new("model_no_derivatives", "warning", "No-derivatives licence: splitting it into parts is a modification; do not share the results."));
         return new(ReconstructionRoutes.ReuseExistingModel, RouteAvailability.Available, reasons, best.Id);
+    }
+
+    /// <summary>
+    /// Reference pictures are previews of at most 640 px, so far more views are asked for than a
+    /// set of full-resolution photos needs (the Photogrammetry page takes those).
+    /// </summary>
+    public const int MinReferenceViewsForPhotogrammetry = 8;
+
+    private static RouteOption MultiView(ReconstructionEvidence e, bool reuseAvailable)
+    {
+        if (!e.PhotogrammetryReady)
+        {
+            return new(ReconstructionRoutes.MultiView, RouteAvailability.Unsupported,
+            [
+                new("no_multiview_engine", "blocker",
+                    (e.PhotogrammetryReason ?? "The Meshroom photogrammetry engine is not installed.") +
+                    " With the Stable Fast 3D or SPAR3D engine, extra photos colour the hidden sides (hybrid), but the shape still comes from one photo."),
+            ]);
+        }
+
+        var views = (e.HasInputImage ? 1 : 0) + e.UsableSameObjectViews;
+        var blockers = new List<RouteReason>();
+        if (views < MinReferenceViewsForPhotogrammetry)
+            blockers.Add(new("too_few_views", "blocker", $"{views} usable picture(s) of the same object (input photo plus accepted same-object pictures); at least {MinReferenceViewsForPhotogrammetry} are needed from a reference search. For your own photos use the Photogrammetry page."));
+        if (reuseAvailable)
+            blockers.Add(ExistingModelBlocker);
+        if (blockers.Count > 0)
+            return new(ReconstructionRoutes.MultiView, RouteAvailability.Unavailable, blockers, ExtraPhotos: views);
+
+        return new(ReconstructionRoutes.MultiView, RouteAvailability.Available,
+        [
+            new("multi_view_photos", "info", $"{views} pictures go to Meshroom, which reconstructs the shape from the views themselves (nothing is guessed by an AI)."),
+            new("reference_previews_small", "warning", "Reference pictures are previews of at most 640 px taken by different cameras: the reconstruction may fail or be coarse. Your own full-resolution photos on the Photogrammetry page work much better."),
+            new("scale_unknown", "warning", "Photogrammetry does not know the real size: calibrate the scale with one known dimension afterwards."),
+        ], ExtraPhotos: views);
     }
 
     private static RouteOption Hybrid(ReconstructionEvidence e, bool reuseAvailable)

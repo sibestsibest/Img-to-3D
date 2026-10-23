@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Reconstruction, RouteOption } from '../types/references'
-import { blockers, canStart, isGenerating, routeLabel, runsInference, stateLabel, stateTone } from './reconstructionState'
+import { blockers, canStart, isGenerating, routeLabel, runsInference, runsPhotogrammetry, startLabel, stateLabel, stateTone } from './reconstructionState'
 
 const option = (over: Partial<RouteOption> = {}): RouteOption => ({
   route: 'single_image_reconstruction',
@@ -66,5 +66,17 @@ describe('reconstruction state', () => {
     expect(runsInference('hybrid_reconstruction')).toBe(true)
     expect(runsInference('reuse_existing_model')).toBe(false)
     expect(runsInference('manual_geometry_required')).toBe(false)
+    expect(runsInference('multi_view_reconstruction')).toBe(false)
+    expect(runsPhotogrammetry('multi_view_reconstruction')).toBe(true)
+    expect(startLabel('multi_view_reconstruction')).toBe('Start reconstruction')
+    expect(startLabel('single_image_reconstruction')).toBe('Start generation')
+    expect(startLabel('reuse_existing_model')).toBe('Create part design')
+  })
+
+  it('follows a photogrammetry run started from the search', () => {
+    expect(isGenerating(plan({ state: 'multi_view_reconstruction', jobStatus: 'queued' }))).toBe(true)
+    expect(isGenerating(plan({ state: 'multi_view_reconstruction', jobStatus: 'running' }))).toBe(true)
+    expect(isGenerating(plan({ state: 'completed', jobStatus: 'succeeded' }))).toBe(false)
+    expect(isGenerating(plan({ state: 'multi_view_reconstruction', jobStatus: 'cancelled' }))).toBe(false)
   })
 })

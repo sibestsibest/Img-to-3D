@@ -25,6 +25,10 @@ public sealed class StorageOptions
     [Required]
     public string ReferenceCachePath { get; set; } = "../../../data/reference-cache";
 
+    /// <summary>Photo sets and results of photogrammetry jobs; never touched by job retention (the user deletes them).</summary>
+    [Required]
+    public string PhotogrammetryRootPath { get; set; } = "../../../data/photogrammetry";
+
     /// <summary>Jobs (rows and files) older than this are deleted.</summary>
     public TimeSpan RetentionPeriod { get; set; } = TimeSpan.FromDays(7);
 
@@ -293,6 +297,56 @@ public sealed class ParametricOptions
     /// <summary>Worker stderr kept for the log per run.</summary>
     [Range(1024, 10_000_000)]
     public int MaxLogBytes { get; set; } = 64 * 1024;
+}
+
+/// <summary>
+/// Optional Meshroom (AliceVision) photogrammetry. Without <see cref="MeshroomPath"/> the feature
+/// reports "missing" and the rest of the application is unaffected. Relative paths resolve against
+/// the API content root.
+/// </summary>
+public sealed class PhotogrammetryOptions
+{
+    public const string SectionName = "Photogrammetry";
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Meshroom installation folder, or the meshroom_batch executable itself.</summary>
+    public string? MeshroomPath { get; set; }
+
+    /// <summary>Meshroom's working folders (photo copies, cache, output), one per job, deleted afterwards.</summary>
+    [Required]
+    public string WorkRoot { get; set; } = "../../../data/photogrammetry-work";
+
+    /// <summary>Keep the working folder after a run (for diagnosing Meshroom problems; uses a lot of disk).</summary>
+    public bool KeepWorkFiles { get; set; }
+
+    /// <summary>One reconstruction; Meshroom is killed when it is exceeded.</summary>
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromHours(6);
+
+    /// <summary>How often a running job's progress and cancellation are checked.</summary>
+    public TimeSpan ProgressInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    [Range(3, 2000)]
+    public int MaxPhotos { get; set; } = 300;
+
+    [Range(1024, 200L * 1024 * 1024)]
+    public long MaxPhotoBytes { get; set; } = 40L * 1024 * 1024;
+
+    [Range(256, 30000)]
+    public int MaxPhotoDimension { get; set; } = 12000;
+
+    [Range(1_000_000, 500_000_000)]
+    public long MaxPhotoPixels { get; set; } = 60_000_000;
+
+    [Range(1, 1000)]
+    public int MaxJobsPerOwner { get; set; } = 50;
+
+    /// <summary>Largest Meshroom mesh read back (OBJ text).</summary>
+    [Range(1024, 4L * 1024 * 1024 * 1024)]
+    public long MaxObjBytes { get; set; } = 1024L * 1024 * 1024;
+
+    [Range(1024, 10_000_000)]
+    public int MaxLogBytes { get; set; } = 256 * 1024;
 }
 
 public sealed class ModelOutputOptions

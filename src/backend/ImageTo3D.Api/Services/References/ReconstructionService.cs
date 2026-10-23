@@ -5,6 +5,7 @@ using ImageTo3D.Api.DTOs;
 using ImageTo3D.Api.Models;
 using ImageTo3D.Api.Services.Inference;
 using ImageTo3D.Api.Services.PartDesign;
+using ImageTo3D.Api.Services.Photogrammetry;
 using ImageTo3D.Api.Services.Storage;
 using ImageTo3D.Core.Contracts;
 using ImageTo3D.Core.Reconstruction;
@@ -24,6 +25,8 @@ public sealed class ReconstructionService(
     IReferenceArtifactStore store,
     JobService jobs,
     PartDesignService designs,
+    PhotogrammetryService photogrammetry,
+    IMeshroomEngine meshroom,
     IInferenceClient inference,
     IOwnerAccessor owner,
     IOptions<UploadOptions> uploadOptions,
@@ -45,15 +48,13 @@ public sealed class ReconstructionService(
     public async Task<ReconstructionDto> StartAsync(Guid sessionId, StartReconstructionRequest request, CancellationToken cancellationToken)
     {
         var route = request.Route!;
-        if (route == ReconstructionRoutes.MultiView)
-            throw new ApiException(StatusCodes.Status409Conflict, "route_unsupported", "Multi-view reconstruction is not supported by any installed engine.");
         if (!ReconstructionRoutes.Executable.Contains(route))
             throw new ApiException(StatusCodes.Status400BadRequest, "invalid_route", $"Route must be one of: {string.Join(", ", ReconstructionRoutes.Executable)}.");
 
         var session = await LoadAsync(sessionId, cancellationToken);
         var running = await SyncWithJobAsync(session, cancellationToken);
         if (running is { IsTerminal: false })
-            throw new ApiException(StatusCodes.Status409Conflict, "reconstruction_in_progress", "A generation for this search is still running. Wait for it or cancel it first.");
+            throw new ApiException(StatusCodes.Status409Conflict, "reconstruction_in_progress", "A generation or reconstruction for this search is still running. Wait for it or cancel it first.");
 
         var (plan, engine, reachable) = await PlanAsync(session, cancellationToken);
         var option = plan.Route(route);
@@ -64,7 +65,7 @@ public sealed class ReconstructionService(
         }
 
         var now = time.GetUtcNow().UtcDateTime;
-        GenerationJob? job = null;
+        LinkedJob? job = null;
         switch (route)
         {
             case ReconstructionRoutes.ReuseExistingModel:
@@ -80,6 +81,30 @@ public sealed class ReconstructionService(
                     request.Name ?? session.Name,
                     cancellationToken);
                 Record(session, route, ReconstructionStates.Completed, now, designId: project.Id, modelId: model.Id);
+                break;
+            }
+
+            case ReconstructionRoutes.MultiView:
+            {
+                // The input photo plus every accepted same-object picture (not capped like extra photos: Meshroom wants many views).
+                var photos = new List<PhotoInput>();
+                var used = new List<Guid>();
+                if (await store.ReadAllAsync(session.Id, ReferenceArtifactNames.InputImage, cancellationToken) is { } inputPhoto)
+                    photos.Add(new PhotoInput(inputPhoto, "input.png"));
+                foreach (var candidate in ExtraViews(session))
+                {
+                    var picture = candidate.HasFullImage
+                        ? await store.ReadAllAsync(session.Id, ReferenceArtifactNames.FullImage(candidate.Id), cancellationToken)
+                        : await store.ReadAllAsync(session.Id, ReferenceArtifactNames.Thumbnail(candidate.Id), cancellationToken);
+                    if (picture is null)
+                        continue;
+                    photos.Add(new PhotoInput(picture, $"reference-{candidate.SortOrder + 1}.jpg"));
+                    used.Add(candidate.Id);
+                }
+
+                var jobId = await photogrammetry.CreateAndStartAsync(request.Name ?? session.Name, photos, session.Id, cancellationToken);
+                job = new LinkedJob(PhotogrammetryStatuses.Queued, false);
+                Record(session, route, route, now, jobId: jobId, extraIds: used);
                 break;
             }
 
@@ -116,7 +141,7 @@ public sealed class ReconstructionService(
                 }
 
                 var created = await jobs.CreateFromImagesAsync(input, session.Name + ".png", extras, cancellationToken);
-                job = await db.Jobs.AsNoTracking().FirstAsync(j => j.Id == created.Id, cancellationToken);
+                job = Linked(await db.Jobs.AsNoTracking().FirstAsync(j => j.Id == created.Id, cancellationToken));
                 Record(session, route, route, now, jobId: created.Id, extraIds: used);
                 break;
             }
@@ -161,19 +186,30 @@ public sealed class ReconstructionService(
     /// Brings the stored state up to date with the session's generation job. A job deleted by
     /// retention leaves the last known state; one that vanished while running is reported as failed.
     /// </summary>
-    private async Task<GenerationJob?> SyncWithJobAsync(ReferenceSession session, CancellationToken cancellationToken)
+    /// <summary>The generation or photogrammetry job a started route follows, as the plan needs it.</summary>
+    private sealed record LinkedJob(string Status, bool IsTerminal, string? Outcome = null, string? Message = null);
+
+    private static LinkedJob Linked(GenerationJob job) => new(job.Status.ToString(), job.IsTerminal,
+        job.Status switch { JobStatus.Succeeded => ReconstructionStates.Completed, JobStatus.Failed => ReconstructionStates.Failed, JobStatus.Cancelled => ReconstructionStates.Cancelled, _ => null },
+        job.Status == JobStatus.Cancelled ? job.ErrorMessage ?? "The generation was cancelled." : job.ErrorMessage);
+
+    private static LinkedJob Linked(PhotogrammetryJob job) => new(job.Status, PhotogrammetryStatuses.IsTerminal(job.Status),
+        job.Status switch { PhotogrammetryStatuses.Succeeded => ReconstructionStates.Completed, PhotogrammetryStatuses.Failed => ReconstructionStates.Failed, PhotogrammetryStatuses.Cancelled => ReconstructionStates.Cancelled, _ => null },
+        job.Status == PhotogrammetryStatuses.Cancelled ? "The reconstruction was cancelled." : job.ErrorMessage);
+
+    private async Task<LinkedJob?> SyncWithJobAsync(ReferenceSession session, CancellationToken cancellationToken)
     {
         if (session.ReconstructionJobId is not { } jobId)
             return null;
-        var job = await db.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId && j.OwnerKeyHash == owner.OwnerKeyHash, cancellationToken);
+        var job = ReconstructionRoutes.RunsPhotogrammetry(session.ReconstructionRoute ?? "")
+            ? await db.PhotogrammetryJobs.AsNoTracking().Where(j => j.Id == jobId && j.OwnerKeyHash == owner.OwnerKeyHash).Select(j => Linked(j)).FirstOrDefaultAsync(cancellationToken)
+            : await db.Jobs.AsNoTracking().Where(j => j.Id == jobId && j.OwnerKeyHash == owner.OwnerKeyHash).Select(j => Linked(j)).FirstOrDefaultAsync(cancellationToken);
         var running = session.ReconstructionState == session.ReconstructionRoute;
         (string State, string? Message) next = job switch
         {
-            null when running => (ReconstructionStates.Failed, "The generation job no longer exists."),
+            null when running => (ReconstructionStates.Failed, ReconstructionRoutes.RunsPhotogrammetry(session.ReconstructionRoute ?? "") ? "The photogrammetry job no longer exists." : "The generation job no longer exists."),
             null => (session.ReconstructionState!, session.ReconstructionMessage),
-            { Status: JobStatus.Succeeded } => (ReconstructionStates.Completed, null),
-            { Status: JobStatus.Failed } => (ReconstructionStates.Failed, job.ErrorMessage),
-            { Status: JobStatus.Cancelled } => (ReconstructionStates.Cancelled, job.ErrorMessage ?? "The generation was cancelled."),
+            { Outcome: { } outcome } => (outcome, outcome == ReconstructionStates.Completed ? null : job.Message),
             _ => (session.ReconstructionRoute!, null),
         };
 
@@ -203,6 +239,7 @@ public sealed class ReconstructionService(
             }
         }
 
+        var photogrammetryEngine = await meshroom.GetCapabilityAsync(cancellationToken);
         var accepted = session.Models
             .Where(m => m.Decision == ReferenceDecisions.Accepted)
             .Select(m =>
@@ -225,11 +262,13 @@ public sealed class ReconstructionService(
             accepted,
             health?.Engine,
             health is not null,
-            uploadOptions.Value.MaxExtraImages);
+            uploadOptions.Value.MaxExtraImages,
+            photogrammetryEngine.Status == "ready",
+            photogrammetryEngine.Reason);
         return (ReconstructionPlanner.Plan(evidence), health?.Engine, health is not null);
     }
 
-    private static ReconstructionDto ToDto(ReferenceSession s, GenerationJob? job, ReconstructionPlan plan, string? engine, bool reachable)
+    private static ReconstructionDto ToDto(ReferenceSession s, LinkedJob? job, ReconstructionPlan plan, string? engine, bool reachable)
     {
         static RouteReasonDto Reason(RouteReason r) => new(r.Code, r.Severity, r.Message);
         var state = s.ReconstructionState ?? StateBeforeDecision(s);
@@ -238,7 +277,7 @@ public sealed class ReconstructionService(
             s.ReconstructionRoute,
             s.ReconstructionStartedAt is { } t ? DateTime.SpecifyKind(t, DateTimeKind.Utc) : null,
             s.ReconstructionJobId,
-            job?.Status.ToString(),
+            job?.Status,
             s.ReconstructionDesignId,
             s.ReconstructionModelId,
             s.ReconstructionExtraIdsJson is { } ids ? JsonSerializer.Deserialize<List<Guid>>(ids, Json) ?? [] : [],

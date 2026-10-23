@@ -127,13 +127,80 @@ Which geometry engines can be used now, for the UI to offer only working workflo
 { "engines": [
   { "id": "parametric", "kind": "parametric", "origin": "parametric", "status": "ready", "version": "0.1.0", "reason": null },
   { "id": "TripoSR", "kind": "single_image_ai", "origin": "ai_predicted", "status": "ready", "version": null, "reason": null },
-  { "id": "meshroom", "kind": "photogrammetry", "origin": "photogrammetry", "status": "unavailable", "version": null,
-    "reason": "Multi-photo reconstruction (Meshroom) is not integrated yet." } ] }
+  { "id": "meshroom", "kind": "photogrammetry", "origin": "photogrammetry", "status": "missing", "version": null,
+    "reason": "Meshroom is not configured: install Meshroom 2025.1 or newer and set Photogrammetry:MeshroomPath to its folder." } ] }
 ```
 
 `status`: `ready`, `missing` (not set up, e.g. no worker venv), `disabled`, `failed` or
 `unavailable`; `reason` says what to do. Errors carry an optional `field` extension (e.g.
 `"parameters.height"`) when they are about one request field.
+
+## Photogrammetry (`/api/photogrammetry`)
+
+This is a multi-photo reconstruction with the optional Meshroom engine
+(`Photogrammetry:MeshroomPath`). A job starts as a `draft` that collects photos. Starting it moves
+it through `queued` and `running` to `succeeded`, `failed` or `cancelled`; one reconstruction runs
+at a time. Photos are stored byte for byte, so their EXIF data reaches Meshroom. The working
+folder (photo copies, cache, output) is deleted after the run. Jobs belong to the browser that made
+them (other browsers get `404`), and job retention never removes them.
+
+Job fields:
+
+* Identity and state: `id`, `name`, `status`, `pipeline`, `engineVersion`,
+  `sourceReferenceSessionId`, `createdAt`, `startedAt`, `completedAt`, `origin: "photogrammetry"`,
+  `units: "mm"`.
+* Progress: `progress { nodesDone, currentNode, elapsedSeconds }`. Meshroom announces no total, so
+  there is no percentage.
+* Errors: `errorCode`, `error`.
+* Photos: `photos[] { id, sortOrder, originalName, format, width, height, sizeBytes, sharpness,
+  hasExif, thumbnailUrl }`, `findings[] { code, severity: info|warning|blocker, message, photoId }`
+  and `canStart`.
+* Result: `mesh { vertices, triangles, closed, boundaryEdges, nonManifoldEdges,
+  degenerateTriangles, components }`, `dimensionsMm`, `scale { status: uncalibrated|calibrated,
+  axis, targetMm, mmPerModelUnit }`, `downloads { glb, stl, zip, log, stlError }` and `outputs[]
+  { path, bytes }`.
+
+Finding codes:
+
+* `too_few_photos` (blocker, fewer than 3 photos)
+* `few_photos` (fewer than 20)
+* `low_resolution` (short side under 1000 px)
+* `blurry` and `blurrier_than_others` (variance of the Laplacian at 1024 px)
+* `near_duplicate` (dHash distance 2 or less)
+* `no_camera_metadata` (no photo has EXIF)
+* `mixed_sizes`
+* `surface_limits`
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/photogrammetry/engine` | `{ status: ready\|missing\|disabled\|failed, reason, version, pipelines[], defaultPipeline, cuda, gpu, notes[], maxPhotos, maxPhotoBytes }`. `meshroom_batch` is found in the configured folder (up to 3 levels deep). Its `--help` must offer `--input`, `--pipeline`, `--output` and `--cache`. Pipelines are the installed `.mg` templates among `photogrammetry`, `photogrammetryDraft`, `photogrammetryObject` and `photogrammetryObjectTurntable`. The default is `photogrammetry` when `nvidia-smi` reports a GPU with CUDA compute capability 5.0 or higher, otherwise `photogrammetryDraft` |
+| POST | `/api/photogrammetry` | JSON `{ name? }`. `201` with a draft; `409 too_many_jobs` |
+| GET | `/api/photogrammetry?page&pageSize` | Summaries `{ id, name, status, photoCount, pipeline, createdAt, completedAt, origin }` |
+| GET / DELETE | `/api/photogrammetry/{id}` | Job / `204`. Deleting a running job stops Meshroom and removes every file |
+| POST | `/api/photogrammetry/{id}/photos` | Multipart field `photos` (JPEG or PNG, up to `Photogrammetry:MaxPhotoBytes`, 12000 px and 60 MP). Draft only. The whole batch is refused if one file is unreadable. `400 invalid_photo` / `too_many_photos` / `missing_file`, `413 file_too_large`, `409 not_draft` |
+| DELETE | `/api/photogrammetry/{id}/photos/{photoId}` | Draft only |
+| GET | `/api/photogrammetry/{id}/photos/{photoId}/thumbnail` | JPEG, 320 px |
+| POST | `/api/photogrammetry/{id}/start` | JSON `{ pipeline? }` (one of the engine's `pipelines`; empty means the default). `409 photo_set_blocked` / `not_draft`, `400 invalid_pipeline` (field `pipeline`), `503 meshroom_unavailable`. Command line: `meshroom_batch --input <images> --pipeline <name> --output <output> --cache <cache> --verbose info`; all paths are generated and no user text is passed |
+| POST | `/api/photogrammetry/{id}/cancel` | Queued: cancelled at once. Running: the process tree is killed within `ProgressInterval`. `409 not_running` |
+| PUT | `/api/photogrammetry/{id}/scale` | JSON `{ axis: X\|Y\|Z\|Longest, targetMm }`, the measured length of one side. Rescales uniformly, rebuilds GLB and STL, and sets `scale.status = calibrated`. Until then the longest side is `ModelOutput:DefaultLongestSideMm` (100 mm) and the status is `uncalibrated` |
+| GET | `/api/photogrammetry/{id}/preview` | Scaled GLB inline |
+| GET | `/api/photogrammetry/{id}/download?format=glb\|stl\|zip\|log` | `glb`: metres, untextured. `stl`: mm, Z-up. `zip`: Meshroom's own output (textured OBJ, MTL, textures). `log`: Meshroom output (tail). `409 not_ready` before success, except `log` |
+| POST | `/api/part-designs/photogrammetry` | JSON `{ jobId, name? }`. Part design from the result at the job's scale (`source.kind` and `origin` `photogrammetry`); issue `scale_uncalibrated` (warning) or `scale_calibrated` |
+
+Failure codes:
+
+* `meshroom_unavailable`
+* `meshroom_failed` (non-zero exit; see the log)
+* `timeout` (`Photogrammetry:Timeout`, 6 h)
+* `no_output_mesh` (no OBJ in the output folder, nor `texturedMesh.obj` or `mesh.obj` in the cache)
+* `invalid_output_mesh`
+* `interrupted` (the API restarted during a run)
+* `internal_error`
+
+The reference-search route `multi_view_reconstruction` (`POST /api/references/{id}/reconstruction`)
+is available when Meshroom is ready and the session has at least 8 pictures: the input photo plus
+accepted same-object pictures. It starts such a job with those pictures and records its `jobId`; the
+reconstruction state follows it.
 
 ## Part design (`/api/part-designs`)
 

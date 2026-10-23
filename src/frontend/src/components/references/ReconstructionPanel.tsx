@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { referenceApi } from '../../services/apiClient'
-import { blockers, canStart, isGenerating, routeHint, routeLabel, runsInference, stateLabel, stateTone } from '../../services/reconstructionState'
+import { blockers, canStart, isGenerating, routeHint, routeLabel, runsInference, runsPhotogrammetry, startLabel, stateLabel, stateTone } from '../../services/reconstructionState'
 import type { Reconstruction, RouteOption } from '../../types/references'
 import { ErrorBanner } from '../ErrorBanner'
 
@@ -86,7 +86,12 @@ export function ReconstructionPanel({ sessionId, version, onOpenDesign, onOpenJo
           {plan.extraReferenceIds.length > 0 && <span className="muted"> · {plan.extraReferenceIds.length} extra photo(s)</span>}
           {plan.message && <p className="recon__message">{plan.message}</p>}
           <div className="recon__links">
-            {plan.jobId && (
+            {plan.jobId && plan.route && runsPhotogrammetry(plan.route) && (
+              <a className="btn btn--small" href={`#/photogrammetry/${plan.jobId}`}>
+                Open the reconstruction
+              </a>
+            )}
+            {plan.jobId && plan.route && !runsPhotogrammetry(plan.route) && (
               <button type="button" className="btn btn--small" onClick={() => onOpenJob(plan.jobId!)}>
                 Open the generation
               </button>
@@ -123,7 +128,7 @@ export function ReconstructionPanel({ sessionId, version, onOpenDesign, onOpenJo
                 disabled={!canStart(plan, option) || starting !== null}
                 onClick={() => void start(option)}
               >
-                {starting === option.route ? 'Starting…' : runsInference(option.route) ? 'Start generation' : 'Create part design'}
+                {starting === option.route ? 'Starting…' : startLabel(option.route)}
               </button>
             )}
           </li>

@@ -63,6 +63,18 @@ public sealed class PartDesignsController(PartDesignService designs) : Controlle
         return CreatedAtAction(nameof(Get), new { id = project.Id }, project);
     }
 
+    /// <summary>Create a project from a succeeded photogrammetry job, at the job's current (preferably calibrated) scale.</summary>
+    [HttpPost("photogrammetry")]
+    [Consumes("application/json")]
+    [ProducesResponseType<PartDesignProjectDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CreateFromPhotogrammetry([FromBody] CreatePhotogrammetryDesignRequest request, [FromServices] ImageTo3D.Api.Services.Photogrammetry.PhotogrammetryService photogrammetry, CancellationToken cancellationToken)
+    {
+        var project = await designs.CreateFromPhotogrammetryAsync(photogrammetry, request, cancellationToken);
+        return CreatedAtAction(nameof(Get), new { id = project.Id }, project);
+    }
+
     /// <summary>A file generated with a parametric project: templates-pdf, views-pdf, views-svg, bom, stl, obj or package.</summary>
     [HttpGet("{id:guid}/parametric/files/{kind}")]
     [ProducesResponseType(StatusCodes.Status200OK)]

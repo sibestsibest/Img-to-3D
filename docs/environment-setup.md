@@ -51,7 +51,11 @@ Phase 6 training runs here on CPU only for small models; GPU training belongs on
    ```powershell
    & 'C:\Tools\Meshroom-2025.1.0\meshroom_batch.exe' --help
    ```
-4. Configure (Phase 3): `Photogrammetry__MeshroomPath=C:\Tools\Meshroom-2025.1.0`.
+4. Configure: set `Photogrammetry__MeshroomPath=C:\Tools\Meshroom-2025.1.0` (environment
+   variable) or `Photogrammetry:MeshroomPath` in the API's `appsettings.json`. Restart the API and
+   check **Photogrammetry** (or `GET /api/photogrammetry/engine`).
+5. Optional real test: set `$env:MESHROOM_TEST_PATH` (install folder) and `$env:MESHROOM_TEST_PHOTOS`
+   (a photo folder), then run `dotnet test --filter MeshroomRealTests`.
 
 The binaries are built with CUDA 12 and need an NVIDIA GPU with compute capability 5.0 or newer for
 depth maps. Without one only the draft (CPU) pipeline is usable, with lower quality.

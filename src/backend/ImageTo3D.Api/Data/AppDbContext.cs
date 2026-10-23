@@ -27,6 +27,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<ImageEmbeddingCacheEntry> ImageEmbeddingCache => Set<ImageEmbeddingCacheEntry>();
 
+    public DbSet<PhotogrammetryJob> PhotogrammetryJobs => Set<PhotogrammetryJob>();
+
+    public DbSet<PhotogrammetryPhoto> PhotogrammetryPhotos => Set<PhotogrammetryPhoto>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var job = modelBuilder.Entity<GenerationJob>();
@@ -195,5 +199,33 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         embedding.HasKey(e => new { e.Model, e.ImageSha256 });
         embedding.Property(e => e.Model).HasMaxLength(64);
         embedding.Property(e => e.ImageSha256).HasMaxLength(64);
+
+        var photogrammetry = modelBuilder.Entity<PhotogrammetryJob>();
+        photogrammetry.ToTable("PhotogrammetryJobs");
+        photogrammetry.HasKey(j => j.Id);
+        photogrammetry.Property(j => j.OwnerKeyHash).HasMaxLength(64).IsRequired();
+        photogrammetry.Property(j => j.Name).HasMaxLength(100).IsRequired();
+        photogrammetry.Property(j => j.Status).HasMaxLength(16).IsRequired();
+        photogrammetry.Property(j => j.Pipeline).HasMaxLength(48);
+        photogrammetry.Property(j => j.Stage).HasMaxLength(64);
+        photogrammetry.Property(j => j.ErrorCode).HasMaxLength(48);
+        photogrammetry.Property(j => j.ErrorMessage).HasMaxLength(1000);
+        photogrammetry.Property(j => j.EngineVersion).HasMaxLength(32);
+        photogrammetry.Property(j => j.ScaleStatus).HasMaxLength(16).IsRequired();
+        photogrammetry.Property(j => j.ScaleAxis).HasMaxLength(16);
+        photogrammetry.Property(j => j.StlError).HasMaxLength(500);
+        photogrammetry.Property(j => j.OutputsJson).HasDefaultValue("[]");
+        photogrammetry.HasIndex(j => new { j.OwnerKeyHash, j.CreatedAt });
+        photogrammetry.HasIndex(j => j.Status);
+        photogrammetry.HasMany(j => j.Photos).WithOne().HasForeignKey(p => p.JobId).OnDelete(DeleteBehavior.Cascade);
+
+        var photo = modelBuilder.Entity<PhotogrammetryPhoto>();
+        photo.ToTable("PhotogrammetryPhotos");
+        photo.HasKey(p => p.Id);
+        photo.Property(p => p.FileName).HasMaxLength(48).IsRequired();
+        photo.Property(p => p.OriginalName).HasMaxLength(128).IsRequired();
+        photo.Property(p => p.Format).HasMaxLength(8).IsRequired();
+        photo.Property(p => p.Sha256).HasMaxLength(64).IsRequired();
+        photo.HasIndex(p => new { p.JobId, p.SortOrder });
     }
 }

@@ -213,7 +213,7 @@ public class ParametricDesignTests
         Assert.Equal(["parametric", "TripoSR", "meshroom"], caps!.Engines.Select(e => e.Id));
         Assert.Equal(("ready", "0.1.0"), (caps.Engines[0].Status, caps.Engines[0].Version));
         Assert.Equal(("single_image_ai", "ai_predicted", "ready"), (caps.Engines[1].Kind, caps.Engines[1].Origin, caps.Engines[1].Status));
-        Assert.Equal(("photogrammetry", "unavailable"), (caps.Engines[2].Kind, caps.Engines[2].Status));
+        Assert.Equal(("photogrammetry", "missing"), (caps.Engines[2].Kind, caps.Engines[2].Status)); // Meshroom not configured
 
         factory.Inference.Mode = FakeMode.Unavailable;
         caps = await client.GetFromJsonAsync<CapabilitiesDto>("/api/capabilities", ApiFactory.Json);

@@ -65,7 +65,7 @@ public class ReconstructionTests
         (await client.GetFromJsonAsync<PartDesignProjectDto>($"/api/part-designs/{id}", ApiFactory.Json))!;
 
     [Fact]
-    public async Task Plan_ListsEveryRouteAndNeverOffersMultiView()
+    public async Task Plan_ListsEveryRouteAndOffersNoMultiViewWithoutMeshroom()
     {
         using var factory = new ApiFactory();
         var client = factory.CreateClient();
@@ -83,7 +83,8 @@ public class ReconstructionTests
         Assert.True(plan.Routes.Single(r => r.Route == "single_image_reconstruction").Recommended);
         Assert.True(plan.EngineReachable);
 
-        Assert.Equal("route_unsupported", await ProblemCodeAsync(await StartAsync(client, session.Id, "multi_view_reconstruction")));
+        Assert.Contains(plan.Routes.Single(r => r.Route == "multi_view_reconstruction").Reasons, r => r.Code == "no_multiview_engine" && r.Message.Contains("Meshroom"));
+        Assert.Equal("route_unavailable", await ProblemCodeAsync(await StartAsync(client, session.Id, "multi_view_reconstruction")));
         Assert.Equal(HttpStatusCode.BadRequest, (await StartAsync(client, session.Id, "teleport")).StatusCode);
         Assert.Equal(0, factory.Inference.Submissions);
     }

@@ -11,8 +11,9 @@ public class ReconstructionPlannerTests
         IReadOnlyList<ModelEvidence>? accepted = null,
         string? engine = "TripoSR",
         bool reachable = true,
-        int acceptedReferences = 0) =>
-        new(input, true, 10, acceptedReferences, sameObject, pendingModels, accepted ?? [], engine, reachable, 5);
+        int acceptedReferences = 0,
+        bool meshroom = false) =>
+        new(input, true, 10, acceptedReferences, sameObject, pendingModels, accepted ?? [], engine, reachable, 5, meshroom, meshroom ? null : "Meshroom is not configured.");
 
     private static ModelEvidence Upload(Guid? id = null, bool? closed = true, double score = 0.7, string scale = "plausible", bool licenceKnown = true, bool? derivatives = true) =>
         new(id ?? Guid.NewGuid(), "Kit part", HasFile: true, GeometryChecked: true, licenceKnown, derivatives, closed, scale, score);
@@ -80,14 +81,39 @@ public class ReconstructionPlannerTests
     }
 
     [Fact]
-    public void MultiView_IsAlwaysUnsupported()
+    public void MultiView_IsUnsupportedWithoutMeshroomWhateverTheInferenceEngine()
     {
         foreach (var engine in new[] { "TripoSR", "StableFast3D", "SPAR3D", null })
         {
-            var option = ReconstructionPlanner.Plan(Evidence(sameObject: 5, engine: engine)).Route(ReconstructionRoutes.MultiView);
+            var option = ReconstructionPlanner.Plan(Evidence(sameObject: 20, engine: engine)).Route(ReconstructionRoutes.MultiView);
             Assert.Equal(RouteAvailability.Unsupported, option.Availability);
-            Assert.Contains(option.Reasons, r => r.Code == "no_multiview_engine");
+            var reason = Assert.Single(option.Reasons, r => r.Code == "no_multiview_engine");
+            Assert.StartsWith("Meshroom is not configured.", reason.Message);
         }
+    }
+
+    [Fact]
+    public void MultiView_WithMeshroomNeedsEnoughSameObjectViews()
+    {
+        var few = ReconstructionPlanner.Plan(Evidence(sameObject: 6, meshroom: true)).Route(ReconstructionRoutes.MultiView);
+        Assert.Equal(RouteAvailability.Unavailable, few.Availability);
+        Assert.Contains(few.Reasons, r => r.Code == "too_few_views" && r.Message.StartsWith("7 usable"));
+
+        var plan = ReconstructionPlanner.Plan(Evidence(sameObject: 7, meshroom: true));
+        var enough = plan.Route(ReconstructionRoutes.MultiView);
+        Assert.True(enough.IsAvailable);
+        Assert.Equal(8, enough.ExtraPhotos);
+        Assert.Contains(enough.Reasons, r => r.Code == "reference_previews_small" && r.Severity == "warning");
+        Assert.Contains(enough.Reasons, r => r.Code == "scale_unknown");
+        Assert.Equal(ReconstructionRoutes.MultiView, plan.Recommended);
+    }
+
+    [Fact]
+    public void MultiView_IsBlockedByAnAcceptedModelLikeGeneration()
+    {
+        var plan = ReconstructionPlanner.Plan(Evidence(sameObject: 12, accepted: [Upload()], meshroom: true));
+        Assert.Contains(plan.Route(ReconstructionRoutes.MultiView).Reasons, r => r.Code == "existing_model_accepted");
+        Assert.Equal(ReconstructionRoutes.ReuseExistingModel, plan.Recommended);
     }
 
     [Theory]
@@ -151,9 +177,11 @@ public class ReconstructionPlannerTests
     }
 
     [Fact]
-    public void Executable_ExcludesMultiViewAndOnlyGenerationRunsInference()
+    public void Executable_IncludesMultiViewAndOnlyGenerationRunsInference()
     {
-        Assert.DoesNotContain(ReconstructionRoutes.MultiView, ReconstructionRoutes.Executable);
+        Assert.Contains(ReconstructionRoutes.MultiView, ReconstructionRoutes.Executable);
+        Assert.True(ReconstructionRoutes.RunsPhotogrammetry(ReconstructionRoutes.MultiView));
+        Assert.False(ReconstructionRoutes.RunsInference(ReconstructionRoutes.MultiView));
         Assert.True(ReconstructionRoutes.RunsInference(ReconstructionRoutes.Hybrid));
         Assert.True(ReconstructionRoutes.RunsInference(ReconstructionRoutes.SingleImage));
         Assert.False(ReconstructionRoutes.RunsInference(ReconstructionRoutes.ReuseExistingModel));

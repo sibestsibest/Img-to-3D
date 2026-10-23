@@ -10,7 +10,8 @@ const ROUTE_LABELS: Record<ReconstructionRoute, string> = {
 
 const ROUTE_HINTS: Record<ReconstructionRoute, string> = {
   reuse_existing_model: 'Opens the model in the part designer as is. No AI generation runs.',
-  multi_view_reconstruction: 'Geometry from several photos.',
+  multi_view_reconstruction:
+    'Meshroom reconstructs the shape from the views themselves (photogrammetry). Needs Meshroom and at least 8 same-object pictures; your own photos on the Photogrammetry page work much better.',
   hybrid_reconstruction: 'Shape from the input photo; accepted same-object pictures colour the hidden sides.',
   single_image_reconstruction: 'Shape from the input photo alone; hidden sides are guessed.',
   manual_geometry_required: 'Empty part design: add plates, rods, tubes and blocks with exact sizes.',
@@ -43,9 +44,14 @@ export function stateTone(state: ReconstructionState): 'valid' | 'warning' | 'in
   return 'neutral'
 }
 
-/** A generation started from this search is still running (the panel polls until it is not). */
+// Generation jobs report "Succeeded"; photogrammetry jobs "succeeded".
+const FINISHED = new Set(['succeeded', 'failed', 'cancelled'])
+
+/** A generation or photogrammetry run started from this search is still going (the panel polls until it is not). */
 export const isGenerating = (r: Reconstruction) =>
-  (r.state === 'single_image_reconstruction' || r.state === 'hybrid_reconstruction') && r.jobStatus !== null && r.jobStatus !== 'Succeeded' && r.jobStatus !== 'Failed' && r.jobStatus !== 'Cancelled'
+  (r.state === 'single_image_reconstruction' || r.state === 'hybrid_reconstruction' || r.state === 'multi_view_reconstruction') &&
+  r.jobStatus !== null &&
+  !FINISHED.has(r.jobStatus.toLowerCase())
 
 export const blockers = (option: RouteOption) => option.reasons.filter((r) => r.severity === 'blocker')
 
@@ -53,3 +59,11 @@ export const blockers = (option: RouteOption) => option.reasons.filter((r) => r.
 export const canStart = (r: Reconstruction, option: RouteOption) => option.availability === 'available' && !isGenerating(r)
 
 export const runsInference = (route: ReconstructionRoute) => route === 'single_image_reconstruction' || route === 'hybrid_reconstruction'
+
+/** The multi-view route runs a Meshroom photogrammetry job (followed on the Photogrammetry page). */
+export const runsPhotogrammetry = (route: ReconstructionRoute) => route === 'multi_view_reconstruction'
+
+export function startLabel(route: ReconstructionRoute): string {
+  if (runsPhotogrammetry(route)) return 'Start reconstruction'
+  return runsInference(route) ? 'Start generation' : 'Create part design'
+}

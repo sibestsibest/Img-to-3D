@@ -2,6 +2,7 @@ using ImageTo3D.Api.DTOs;
 using ImageTo3D.Api.Models;
 using ImageTo3D.Api.Services.Inference;
 using ImageTo3D.Api.Services.Parametric;
+using ImageTo3D.Api.Services.Photogrammetry;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ImageTo3D.Api.Controllers;
@@ -12,18 +13,19 @@ namespace ImageTo3D.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/capabilities")]
-public sealed class CapabilitiesController(IParametricWorker parametric, IInferenceClient inference) : ControllerBase
+public sealed class CapabilitiesController(IParametricWorker parametric, IInferenceClient inference, IMeshroomEngine meshroom) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<CapabilitiesDto>(StatusCodes.Status200OK)]
     public async Task<CapabilitiesDto> Get(CancellationToken cancellationToken)
     {
         var p = await parametric.GetCapabilityAsync(cancellationToken);
+        var m = await meshroom.GetCapabilityAsync(cancellationToken);
         var engines = new List<EngineCapabilityDto>
         {
             new("parametric", "parametric", GeometryOrigins.Parametric, p.Status, p.EngineVersion, p.Reason),
             await SingleImageAsync(cancellationToken),
-            new("meshroom", "photogrammetry", "photogrammetry", "unavailable", null, "Multi-photo reconstruction (Meshroom) is not integrated yet."),
+            new("meshroom", "photogrammetry", GeometryOrigins.Photogrammetry, m.Status, m.Version, m.Reason),
         };
         return new CapabilitiesDto(engines);
     }

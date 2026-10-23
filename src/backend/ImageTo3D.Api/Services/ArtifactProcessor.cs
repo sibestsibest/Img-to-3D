@@ -22,7 +22,8 @@ public sealed class ArtifactProcessor(ILogger<ArtifactProcessor> logger)
 
     /// <param name="rawGlb">Inference output; its textures/materials are carried over unchanged.</param>
     /// <param name="rawMesh">Geometry parsed from <paramref name="rawGlb"/> (node transforms applied).</param>
-    public ScaledArtifacts Build(byte[] rawGlb, Mesh rawMesh, double mmPerModelUnit)
+    /// <param name="origin">First words of the note written into the GLB (what kind of geometry it is).</param>
+    public ScaledArtifacts Build(byte[] rawGlb, Mesh rawMesh, double mmPerModelUnit, string origin = "AI-generated estimate")
     {
         var bounds = MeshOperations.ComputeBounds(rawMesh);
         var grounded = MeshOperations.CenterOnGround(rawMesh);
@@ -37,7 +38,7 @@ public sealed class ArtifactProcessor(ILogger<ArtifactProcessor> logger)
             rawGlb,
             metresPerUnit,
             new Vector3D(-center.X * metresPerUnit, -bounds.Min.Y * metresPerUnit, -center.Z * metresPerUnit),
-            $"AI-generated estimate. Units: metres. Uniformly scaled; longest side {sizeMm.MaxComponent:F2} mm.");
+            $"{origin}. Units: metres. Uniformly scaled; longest side {sizeMm.MaxComponent:F2} mm.");
         var glbCheck = MeshValidator.Validate(GlbReader.Read(glb));
         if (!glbCheck.IsValid)
             throw new InvalidDataException("Scaled GLB failed validation: " + string.Join(" ", glbCheck.Errors));

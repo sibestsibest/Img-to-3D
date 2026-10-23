@@ -4,6 +4,7 @@ using ImageTo3D.Api.Data;
 using ImageTo3D.Api.Services;
 using ImageTo3D.Api.Services.Inference;
 using ImageTo3D.Api.Services.Parametric;
+using ImageTo3D.Api.Services.Photogrammetry;
 using ImageTo3D.Api.Services.PartDesign;
 using ImageTo3D.Api.Services.Processes;
 using ImageTo3D.Api.Services.Embeddings;
@@ -25,6 +26,7 @@ builder.Services.AddOptions<PartDesignOptions>().Bind(builder.Configuration.GetS
 builder.Services.AddOptions<EmbeddingOptions>().Bind(builder.Configuration.GetSection(EmbeddingOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<ModelSearchOptions>().Bind(builder.Configuration.GetSection(ModelSearchOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<ReferenceSearchOptions>().Bind(builder.Configuration.GetSection(ReferenceSearchOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
+builder.Services.AddOptions<PhotogrammetryOptions>().Bind(builder.Configuration.GetSection(PhotogrammetryOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 builder.Services.AddOptions<ParametricOptions>().Bind(builder.Configuration.GetSection(ParametricOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
 
 builder.Services.AddDbContext<AppDbContext>((sp, options) =>
@@ -46,6 +48,10 @@ builder.Services.AddSingleton<IDesignArtifactStore, LocalDesignArtifactStore>();
 builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
 builder.Services.AddSingleton<IParametricWorker, ParametricWorker>();
 builder.Services.AddScoped<PartDesignService>();
+builder.Services.AddSingleton<IPhotogrammetryArtifactStore, LocalPhotogrammetryArtifactStore>();
+builder.Services.AddSingleton<IMeshroomEngine, MeshroomEngine>();
+builder.Services.AddSingleton<PhotogrammetryQueue>();
+builder.Services.AddScoped<PhotogrammetryService>();
 builder.Services.AddSingleton<IReferenceArtifactStore, LocalReferenceArtifactStore>();
 builder.Services.AddSingleton<ReferenceDownloadCache>();
 builder.Services.AddSingleton<ReferenceHttp>();
@@ -58,6 +64,7 @@ builder.Services.AddScoped<ReferenceService>();
 builder.Services.AddScoped<ReconstructionService>();
 builder.Services.AddHostedService<GenerationWorker>();
 builder.Services.AddHostedService<RetentionCleanupService>();
+builder.Services.AddHostedService<PhotogrammetryWorker>();
 
 builder.Services.AddHttpClient<IInferenceClient, InferenceClient>((sp, http) =>
 {

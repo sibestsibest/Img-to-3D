@@ -30,6 +30,7 @@ import type {
   ReferenceSource,
   UpdateCandidateRequest,
 } from '../types/references'
+import type { PhotogrammetryEngine, PhotogrammetryJob, PhotogrammetrySummary, ScaleAxisName } from '../types/photogrammetry'
 import { apiLog, formatBody, summarize } from './apiLog'
 
 /** Error carrying the backend's stable error code and a user-presentable message. */
@@ -179,6 +180,28 @@ export const parametricApi = {
   create: (body: CreateParametricRequest) => request<PartDesignProject>('/part-designs/parametric', json('POST', body)),
 }
 
+const photoPath = (id: string, rest = '') => `/photogrammetry/${encodeURIComponent(id)}${rest}`
+
+export const photogrammetryApi = {
+  engine: (signal?: AbortSignal) => request<PhotogrammetryEngine>('/photogrammetry/engine', { signal }),
+  create: (name?: string) => request<PhotogrammetryJob>('/photogrammetry', json('POST', { name })),
+  list: (page = 1, pageSize = 50) => request<PagedResult<PhotogrammetrySummary>>(`/photogrammetry?page=${page}&pageSize=${pageSize}`),
+  get: (id: string, signal?: AbortSignal) => request<PhotogrammetryJob>(photoPath(id), { signal }),
+  remove: (id: string) => request<void>(photoPath(id), { method: 'DELETE' }),
+  /** One batch of photos; the server refuses the whole batch if one file is unreadable. */
+  addPhotos(id: string, files: File[]): Promise<PhotogrammetryJob> {
+    const body = new FormData()
+    for (const file of files) body.append('photos', file)
+    return request<PhotogrammetryJob>(photoPath(id, '/photos'), { method: 'POST', body })
+  },
+  removePhoto: (id: string, photoId: string) => request<PhotogrammetryJob>(photoPath(id, `/photos/${encodeURIComponent(photoId)}`), { method: 'DELETE' }),
+  start: (id: string, pipeline?: string) => request<PhotogrammetryJob>(photoPath(id, '/start'), json('POST', { pipeline })),
+  cancel: (id: string) => request<PhotogrammetryJob>(photoPath(id, '/cancel'), { method: 'POST' }),
+  scale: (id: string, axis: ScaleAxisName, targetMm: number) => request<PhotogrammetryJob>(photoPath(id, '/scale'), json('PUT', { axis, targetMm })),
+  /** A part design from the result, at the job's current scale. */
+  createDesign: (jobId: string, name?: string) => request<PartDesignProject>('/part-designs/photogrammetry', json('POST', { jobId, name })),
+}
+
 export const capabilitiesApi = {
   get: (signal?: AbortSignal) => request<Capabilities>('/capabilities', { signal }),
 }
@@ -263,4 +286,8 @@ export const urls = {
   referenceInput: (sessionId: string, size: 'thumbnail' | 'full' = 'thumbnail') => `${BASE}${referencePath(sessionId, '/input')}?size=${size}`,
   modelThumbnail: (sessionId: string, modelId: string) => `${BASE}${referencePath(sessionId, `/models/${encodeURIComponent(modelId)}/thumbnail`)}`,
   modelFile: (sessionId: string, modelId: string) => `${BASE}${referencePath(sessionId, `/models/${encodeURIComponent(modelId)}/file`)}`,
+  /** Scaled result; <version> (mm per unit) busts the cache after recalibration. */
+  photogrammetryPreview: (id: string, version: number | null) => `${BASE}${photoPath(id, '/preview')}?v=${version ?? 0}`,
+  photogrammetryDownload: (id: string, format: 'glb' | 'stl' | 'zip' | 'log', version: number | null) =>
+    `${BASE}${photoPath(id, '/download')}?format=${format}&v=${version ?? 0}`,
 }

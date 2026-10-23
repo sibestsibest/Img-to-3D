@@ -15,7 +15,8 @@ public sealed record ProcessSpec(
     byte[]? StandardInput = null,
     int MaxStandardOutputBytes = 1024 * 1024,
     int MaxStandardErrorBytes = 64 * 1024,
-    IReadOnlyDictionary<string, string?>? Environment = null);
+    IReadOnlyDictionary<string, string?>? Environment = null,
+    bool KeepStandardOutputTail = false);
 
 /// <param name="ExitCode">-1 when the process was killed (timeout or cancellation).</param>
 /// <param name="StandardError">Last <see cref="ProcessSpec.MaxStandardErrorBytes"/> bytes, decoded as UTF-8.</param>
@@ -50,7 +51,7 @@ public sealed class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunne
         process.Start();
         logger.LogDebug("Started {FileName} as process {ProcessId}", Path.GetFileName(spec.FileName), process.Id);
 
-        var stdout = ReadCappedAsync(process.StandardOutput.BaseStream, spec.MaxStandardOutputBytes, keepTail: false);
+        var stdout = ReadCappedAsync(process.StandardOutput.BaseStream, spec.MaxStandardOutputBytes, keepTail: spec.KeepStandardOutputTail);
         var stderr = ReadCappedAsync(process.StandardError.BaseStream, spec.MaxStandardErrorBytes, keepTail: true);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

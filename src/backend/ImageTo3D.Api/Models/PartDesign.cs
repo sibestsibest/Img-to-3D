@@ -21,6 +21,9 @@ public sealed class PartDesignProject
     /// <summary>Generation job the source was copied from (provenance only; the job may since have been deleted).</summary>
     public Guid? SourceJobId { get; set; }
 
+    /// <summary>Photogrammetry job the source was copied from (provenance only).</summary>
+    public Guid? SourcePhotogrammetryJobId { get; set; }
+
     /// <summary>Reference session and model candidate of a reused model (provenance only).</summary>
     public Guid? SourceReferenceSessionId { get; set; }
 
@@ -92,16 +95,20 @@ public static class DesignSourceKinds
 
     /// <summary>Generated from template parameters by the parametric geometry worker: exact, not estimated.</summary>
     public const string Parametric = "parametric";
+
+    /// <summary>Reconstructed from a photo set by Meshroom; scale as calibrated (or uncalibrated) on the job.</summary>
+    public const string Photogrammetry = "photogrammetry";
 }
 
 /// <summary>
 /// Where a model's geometry comes from, shown to the user next to every model: predicted by an AI
-/// model from photos, generated from entered parameters, an existing file, or built by hand.
-/// (Photogrammetry joins in a later phase.)
+/// model from photos, reconstructed from a photo set, generated from entered parameters, an
+/// existing file, or built by hand.
 /// </summary>
 public static class GeometryOrigins
 {
     public const string AiPredicted = "ai_predicted";
+    public const string Photogrammetry = "photogrammetry";
     public const string Parametric = "parametric";
     public const string Uploaded = "uploaded";
     public const string Manual = "manual";
@@ -111,6 +118,7 @@ public static class GeometryOrigins
         DesignSourceKinds.GenerationJob => AiPredicted,
         DesignSourceKinds.ReferenceModel => Uploaded,
         DesignSourceKinds.Parametric => Parametric,
+        DesignSourceKinds.Photogrammetry => Photogrammetry,
         _ => Manual,
     };
 }

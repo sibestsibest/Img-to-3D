@@ -1,6 +1,7 @@
 // Mirrors ImageTo3D.Api reference-search DTOs (src/backend/ImageTo3D.Api/DTOs/ReferenceDtos.cs).
 
 import type { Issue } from './partDesign'
+import type { PhotogrammetryStatus } from './photogrammetry'
 
 export type ReferenceDecision = 'pending' | 'accepted' | 'rejected'
 
@@ -263,7 +264,8 @@ export interface Reconstruction {
   route: ReconstructionRoute | null
   startedAt: string | null
   jobId: string | null
-  jobStatus: 'Pending' | 'Processing' | 'Succeeded' | 'Failed' | 'Cancelled' | null
+  /** Generation jobs use Pending..Cancelled; photogrammetry jobs (multi-view route) use lower-case draft..cancelled. */
+  jobStatus: 'Pending' | 'Processing' | 'Succeeded' | 'Failed' | 'Cancelled' | PhotogrammetryStatus | null
   designId: string | null
   modelId: string | null
   extraReferenceIds: string[]

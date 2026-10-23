@@ -2,6 +2,8 @@ import { useHashRoute } from './hooks/useHashRoute'
 import { engineLabel, useEngineInfo } from './hooks/useEngineInfo'
 import { PartDesignListPage } from './pages/PartDesignListPage'
 import { ParametricPage } from './pages/ParametricPage'
+import { PhotogrammetryListPage } from './pages/PhotogrammetryListPage'
+import { PhotogrammetryPage } from './pages/PhotogrammetryPage'
 import { PartDesignPage } from './pages/PartDesignPage'
 import { ReferenceListPage } from './pages/ReferenceListPage'
 import { ReferenceSessionPage } from './pages/ReferenceSessionPage'
@@ -29,6 +31,9 @@ export default function App() {
           <a href="#/references" aria-current={route.view === 'references' || route.view === 'reference' ? 'page' : undefined}>
             References
           </a>
+          <a href="#/photogrammetry" aria-current={route.view === 'photogrammetry' || route.view === 'photoset' ? 'page' : undefined}>
+            Photogrammetry
+          </a>
           <a href="#/parametric" aria-current={route.view === 'parametric' ? 'page' : undefined}>
             Parametric
           </a>
@@ -50,6 +55,10 @@ export default function App() {
       )}
       {route.view === 'designs' && <PartDesignListPage onOpen={(id) => navigate({ view: 'design', id })} onBack={() => navigate({ view: 'workspace' })} />}
       {route.view === 'design' && <PartDesignPage key={route.id} id={route.id} onBack={() => navigate({ view: 'designs' })} />}
+      {route.view === 'photogrammetry' && <PhotogrammetryListPage onOpen={(id) => navigate({ view: 'photoset', id })} />}
+      {route.view === 'photoset' && (
+        <PhotogrammetryPage key={route.id} id={route.id} onBack={() => navigate({ view: 'photogrammetry' })} onOpenDesign={(id) => navigate({ view: 'design', id })} />
+      )}
       {route.view === 'parametric' && (
         <ParametricPage key={route.from ?? 'new'} from={route.from} onCreated={(id) => navigate({ view: 'design', id })} onBack={() => navigate({ view: 'designs' })} />
       )}

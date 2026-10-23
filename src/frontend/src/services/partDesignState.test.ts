@@ -184,6 +184,10 @@ describe('hash routes', () => {
     expect(parseRoute('#/parametric/../etc')).toEqual({ view: 'parametric', from: null })
     expect(routeHash({ view: 'parametric', from: id })).toBe(`#/parametric/${id}`)
     expect(routeHash({ view: 'parametric', from: null })).toBe('#/parametric')
+    expect(parseRoute('#/photogrammetry')).toEqual({ view: 'photogrammetry' })
+    expect(parseRoute(`#/photogrammetry/${id}`)).toEqual({ view: 'photoset', id })
+    expect(parseRoute('#/photogrammetry/x')).toEqual({ view: 'photogrammetry' })
+    expect(routeHash({ view: 'photoset', id })).toBe(`#/photogrammetry/${id}`)
   })
 })
 

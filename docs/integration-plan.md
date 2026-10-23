@@ -195,7 +195,49 @@ Acceptance: existing workflows and tests unchanged; a spacecraft project can be 
 regenerated, undone and exported; capability report matches what is installed; errors are RFC 7807
 with codes; real DB backed up before the migration.
 
-### Phase 3: Meshroom integration
+### Phase 3: Meshroom integration (done 2026-10-23)
+
+Owner choices:
+
+* Option A: a separate photogrammetry job with its own worker and page, plus the multi-view route
+  in the reference search.
+* Meshroom was not installed on the development VM, so only simulated tests were run.
+* The pipeline is picked automatically from the GPU: `photogrammetry` with CUDA, otherwise
+  `photogrammetryDraft`.
+
+As built:
+
+* **Core:** `ObjReader`, `PhotoInspector` (reduced decode, sharpness, EXIF, dHash) and
+  `PhotoSetCheck`. The planner's multi-view route is available when Meshroom is ready and there are
+  at least 8 views.
+* **API:**
+  * `MeshroomEngine` checks the installation: it finds the executable, lists the installed `.mg`
+    pipelines from a whitelist, runs `--help` to confirm the needed options, and calls `nvidia-smi`
+    for CUDA.
+  * `PhotogrammetryService`, `PhotogrammetryWorker` (own queue, progress from cache status files,
+    cancel and delete, timeout, restart recovery, output discovery in the output folder then the
+    cache, scaled GLB/STL, result zip, log) and `PhotogrammetryController`.
+  * `POST /api/part-designs/photogrammetry`, the Meshroom entry in `/api/capabilities`, and
+    `ReconstructionService` starting and following the photogrammetry job.
+* **Migration** `AddPhotogrammetry`, additive: tables `PhotogrammetryJobs` and
+  `PhotogrammetryPhotos`, and column `PartDesignProjects.SourcePhotogrammetryJobId`.
+* **Frontend:** `#/photogrammetry` (engine status, photo sets) and `#/photogrammetry/<id>` (upload
+  in batches, per-photo warnings, pipeline, start and cancel, progress, calibration, downloads,
+  part designer). The reference panel links to the reconstruction.
+* **Tests:**
+
+  | Suite | Before | After |
+  |---|---|---|
+  | Core | 201 | 223 |
+  | Api | 240 | 261 (plus a real-Meshroom test, skipped unless configured) |
+  | frontend | 94 | 101 |
+
+  All pass.
+
+Not verified: a real Meshroom run (no installation and no GPU here). A live run used a
+`meshroom_batch.cmd` stand-in through the real process runner.
+
+The plan below is kept as written before implementation.
 
 * Configuration `Photogrammetry:MeshroomPath` (folder or `meshroom_batch.exe`), `WorkRoot`,
   `Timeout` (default 6 h), `MaxConcurrentJobs` = 1, `Pipeline` ∈ {`photogrammetry`,
